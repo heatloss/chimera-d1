@@ -14,9 +14,12 @@ import { Media } from './collections/Media'
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
-const cloudflareRemoteBindings = process.env.NODE_ENV === 'production'
+const isNextBuild = process.argv.some(arg => arg.includes('next') && (arg.includes('build') || process.argv.includes('build')))
+const cloudflareRemoteBindings = process.env.NODE_ENV === 'production' && !isNextBuild
+const isCommandLineOperation = process.argv.find((value) => value.match(/^(generate|migrate):?/))
+
 const cloudflare =
-  process.argv.find((value) => value.match(/^(generate|migrate):?/)) || !cloudflareRemoteBindings
+  isCommandLineOperation || !cloudflareRemoteBindings
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
 
