@@ -27,11 +27,26 @@ Used a clean PayloadCMS Cloudflare template to incrementally reintroduce feature
 - **When**: Only in Cloudflare Workers (preview/production)
 - **Not affected**: Local development (`pnpm dev`) works fine
 
-## Root Cause
+## Root Cause - UPDATED
 
-**Custom fields with `beforeValidate` hooks break file uploads in Cloudflare Workers.**
+**ANY hooks (field-level OR collection-level) that manipulate data during Media uploads break file uploads in Cloudflare Workers.**
 
-Specifically, adding this code to the Media collection causes uploads to fail:
+The issue is NOT specific to `beforeValidate` hooks or UUID generation - it's ANY hook that runs during the upload process.
+
+### Test Results
+
+| Configuration | Result |
+|--------------|--------|
+| No custom `id` field | ✅ Works |
+| Custom `id` field, no hooks | ✅ Works |
+| Custom `id` field with field-level `beforeValidate` hook | ❌ 500 Error |
+| Custom `id` field with collection-level `beforeChange` hook | ❌ 500 Error |
+
+### Conclusion
+
+**Hooks break Media uploads in Workers**, regardless of where they're placed. The custom `id` field itself is fine - it's the attempt to auto-generate values via hooks that causes the failure.
+
+Specifically, this code BREAKS uploads:
 
 ```typescript
 {
@@ -129,48 +144,63 @@ This pattern appears in multiple places in the payload-d1 project:
 
 ## Workarounds
 
-### Option 1: Remove Custom Field Hooks (Temporary)
-Remove `beforeValidate` hooks from Media collection fields:
+### Option 1: Manual UUID Generation in Application Code (RECOMMENDED)
+Keep custom `id` field but generate UUIDs in your application code BEFORE calling Payload APIs:
 
 ```typescript
-// Remove the id field with hook
-// Or convert to a regular field without hooks
-```
-
-**Pros**: Uploads work immediately
-**Cons**: Lose custom ID generation functionality
-
-### Option 2: Use Collection-Level Hooks (Untested)
-Move ID generation from field-level hooks to collection-level hooks:
-
-```typescript
-export const Media: CollectionConfig = {
-  hooks: {
-    beforeChange: [
-      ({ data, operation }) => {
-        if (operation === 'create' && !data.id) {
-          data.id = crypto.randomUUID()
-        }
-        return data
-      }
-    ]
-  }
+// In your frontend or API route
+const newMedia = {
+  id: crypto.randomUUID(), // Generate UUID in application code
+  alt: 'Image description',
+  file: uploadedFile
 }
+
+await payload.create({
+  collection: 'media',
+  data: newMedia
+})
 ```
 
-**Pros**: May avoid the Workers execution context issue
-**Cons**: Untested, may have same problem
+**Pros**:
+- Full control over UUID format
+- Works in Workers
+- Maintains security (no sequential IDs)
 
-### Option 3: Use Payload's Built-in ID (Recommended for Testing)
-Let Payload handle ID generation automatically:
+**Cons**:
+- Less convenient than automatic generation
+- Need to generate IDs wherever you create media
+
+### Option 2: Use Payload's Built-in ID
+Accept Payload's default auto-incrementing IDs:
 
 ```typescript
 // Remove custom id field entirely
 // Payload will use its default id field
 ```
 
-**Pros**: Guaranteed to work
-**Cons**: Lose control over ID format
+**Pros**: Guaranteed to work, no code changes needed
+**Cons**:
+- Sequential integer IDs are predictable (security concern)
+- Lose control over ID format
+
+### Option 3: Hybrid Approach
+Use Payload's default ID but add a separate UUID field for external references:
+
+```typescript
+fields: [
+  {
+    name: 'publicId',  // Use this for external/public references
+    type: 'text',
+    required: false,
+    admin: { readOnly: true }
+  }
+]
+```
+
+Generate `publicId` in application code when needed, keep internal `id` as auto-increment.
+
+**Pros**: Security benefits of UUIDs where needed, uploads still work
+**Cons**: More complex data model
 
 ## Recommended Solution
 

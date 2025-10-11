@@ -7,6 +7,14 @@ export const Media: CollectionConfig = {
   },
   fields: [
     {
+      name: 'id',
+      type: 'text',
+      required: false, // Make optional so we can test without hooks
+      admin: {
+        hidden: true,
+      },
+    },
+    {
       name: 'alt',
       type: 'text',
       required: true,
