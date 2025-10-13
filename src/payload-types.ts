@@ -144,6 +144,18 @@ export interface User {
 export interface Media {
   id: number;
   alt: string;
+  /**
+   * Auto-generated thumbnail sizes (7 variants)
+   */
+  imageSizes?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -239,6 +251,7 @@ export interface UsersSelect<T extends boolean = true> {
  */
 export interface MediaSelect<T extends boolean = true> {
   alt?: T;
+  imageSizes?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;

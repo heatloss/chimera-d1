@@ -170,6 +170,22 @@ Form Data:
   "width": 1920,
   "height": 1080,
   "url": "/api/media/file/example-image.jpg",
+  "imageSizes": {
+    "thumbnail": {
+      "url": "/api/media/file/example-image-thumbnail.jpg",
+      "width": 400,
+      "height": 225,
+      "mimeType": "image/jpeg",
+      "fileSize": 15360,
+      "filename": "example-image-thumbnail.jpg"
+    },
+    "thumbnail_small": { /* similar structure */ },
+    "webcomic_page": { /* similar structure */ },
+    "webcomic_mobile": { /* similar structure */ },
+    "cover_image": { /* similar structure */ },
+    "social_preview": { /* similar structure */ },
+    "avatar": { /* similar structure */ }
+  },
   "createdAt": "2025-10-12T10:30:00.000Z",
   "updatedAt": "2025-10-12T10:30:00.000Z"
 }
@@ -184,8 +200,18 @@ Form Data:
 - `width` - Integer (pixels, for images)
 - `height` - Integer (pixels, for images)
 - `url` - String, direct URL to access the file
+- `imageSizes` - JSON object containing auto-generated thumbnails (7 sizes)
 - `createdAt` - ISO 8601 datetime
 - `updatedAt` - ISO 8601 datetime
+
+**Image Sizes**: Automatically generated on upload (dev mode only, using Sharp):
+- `thumbnail` - 400px width, inside fit
+- `thumbnail_small` - 200px width, inside fit
+- `webcomic_page` - 800px width, inside fit
+- `webcomic_mobile` - 400px width, inside fit
+- `cover_image` - 600×800px, cover fit
+- `social_preview` - 1200×630px, cover fit
+- `avatar` - 200×200px, cover fit
 
 **Access Control**:
 - Anyone can read media (currently)
