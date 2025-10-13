@@ -14,7 +14,8 @@ import { Media } from './collections/Media'
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
-const cloudflareRemoteBindings = process.env.NODE_ENV === 'production'
+// Use remote bindings only for actual deployment, not during build
+const cloudflareRemoteBindings = process.env.CLOUDFLARE_ENV !== undefined && process.env.NODE_ENV === 'production'
 const cloudflare =
   process.argv.find((value) => value.match(/^(generate|migrate):?/)) || !cloudflareRemoteBindings
     ? await getCloudflareContextFromWrangler()
