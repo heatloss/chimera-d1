@@ -3,6 +3,7 @@ import { withPayload } from '@payloadcms/next/withPayload'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Your Next.js config here
+  output: 'standalone', // Required for OpenNext Cloudflare builds
   webpack: (webpackConfig: any, { isServer }: any) => {
     webpackConfig.resolve.extensionAlias = {
       '.cjs': ['.cts', '.cjs'],
