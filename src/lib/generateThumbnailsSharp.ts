@@ -48,7 +48,7 @@ export async function generateThumbnailsSharp(
         name: size.name,
         width: metadata.width || size.width,
         height: metadata.height || size.height || size.width,
-        url: `/api/media/file/${thumbnailFilename}`, // Will be updated after R2 upload
+        url: `/api/media/thumbnail/${thumbnailFilename}`, // Served via custom thumbnail route
         mimeType,
         filesize: buffer.length,
         buffer, // Include buffer for R2 upload

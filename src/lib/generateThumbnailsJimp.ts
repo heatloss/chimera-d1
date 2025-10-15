@@ -31,15 +31,17 @@ export async function generateThumbnailsJimp(
 
         if (size.fit === 'cover' && size.height) {
           // Cover: crop to exact dimensions
-          clone.cover(size.width, size.height, Jimp.HORIZONTAL_ALIGN_CENTER | Jimp.VERTICAL_ALIGN_MIDDLE)
+          clone.cover({ w: size.width, h: size.height })
         } else {
           // Inside: fit within dimensions (maintain aspect ratio)
           const targetHeight = size.height || (originalHeight * size.width) / originalWidth
-          clone.scaleToFit(size.width, targetHeight)
+          clone.scaleToFit({ w: size.width, h: targetHeight })
         }
 
         // Get buffer for this size
-        const buffer = await clone.getBufferAsync(mimeType)
+        // Map mimeType string to Jimp's expected literal type
+        const jimpMimeType = mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/bmp' | 'image/tiff'
+        const buffer = await clone.getBuffer(jimpMimeType)
 
         // Generate filename for this size
         const ext = filename.split('.').pop() || 'jpg'
@@ -50,7 +52,7 @@ export async function generateThumbnailsJimp(
           name: size.name,
           width: clone.bitmap.width,
           height: clone.bitmap.height,
-          url: `/api/media/file/${thumbnailFilename}`, // Will be updated after R2 upload
+          url: `/api/media/thumbnail/${thumbnailFilename}`, // Served via custom thumbnail route
           mimeType,
           filesize: buffer.length,
           buffer, // Include buffer for R2 upload

@@ -54,13 +54,9 @@ export async function uploadThumbnailsToR2(
         },
       })
 
-      // Update URL to point to actual R2 file
-      const updatedThumbnail: GeneratedThumbnail = {
-        ...thumbnail,
-        url: `/api/media/file/${thumbnail.filename}`,
-      }
-
       // Remove buffer from final metadata (don't store in DB)
+      // URL is already set correctly by the generator
+      const updatedThumbnail: GeneratedThumbnail = { ...thumbnail }
       delete updatedThumbnail.buffer
 
       uploadedThumbnails.push(updatedThumbnail)

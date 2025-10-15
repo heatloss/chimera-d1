@@ -1,7 +1,5 @@
 import type { CollectionConfig } from 'payload'
-import { generateThumbnailsSharp } from '@/lib/generateThumbnailsSharp'
-import { generateThumbnailsJimp } from '@/lib/generateThumbnailsJimp'
-import { uploadThumbnailsToR2 } from '@/lib/uploadThumbnails'
+// NOTE: Using dynamic imports to avoid bundling Sharp into Workers build
 
 export const Media: CollectionConfig = {
   slug: 'media',
@@ -190,6 +188,7 @@ export const Media: CollectionConfig = {
             let thumbnails
             if (isWorkersRuntime) {
               console.log('🌐 Using Jimp (Workers runtime)')
+              const { generateThumbnailsJimp } = await import('@/lib/generateThumbnailsJimp')
               thumbnails = await generateThumbnailsJimp(
                 req.file.data,
                 req.file.name,
@@ -197,6 +196,7 @@ export const Media: CollectionConfig = {
               )
             } else {
               console.log('🖥️  Using Sharp (Node.js runtime)')
+              const { generateThumbnailsSharp } = await import('@/lib/generateThumbnailsSharp')
               thumbnails = await generateThumbnailsSharp(
                 req.file.data,
                 req.file.name,
@@ -210,6 +210,7 @@ export const Media: CollectionConfig = {
             const bucket = cloudflare?.env?.R2
             if (bucket) {
               console.log('📦 Found R2 bucket from cloudflare context')
+              const { uploadThumbnailsToR2 } = await import('@/lib/uploadThumbnails')
               thumbnails = await uploadThumbnailsToR2(thumbnails, bucket, 'media')
             } else {
               console.warn('⚠️  R2 bucket not found - storing metadata only')
