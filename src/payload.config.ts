@@ -10,6 +10,9 @@ import { r2Storage } from '@payloadcms/storage-r2'
 
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
+import { Comics } from './collections/Comics'
+import { Chapters } from './collections/Chapters'
+import { Pages } from './collections/Pages'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -21,6 +24,11 @@ const cloudflare =
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
 
+// Store cloudflare context globally for access in hooks
+if (typeof globalThis !== 'undefined') {
+  (globalThis as any).__CLOUDFLARE_CONTEXT__ = cloudflare
+}
+
 export default buildConfig({
   admin: {
     user: Users.slug,
@@ -28,7 +36,7 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users, Media],
+  collections: [Users, Comics, Chapters, Pages, Media],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {

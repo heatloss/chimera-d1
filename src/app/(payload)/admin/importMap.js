@@ -1,7 +1,7 @@
-import { default as default_0c0df27a382a32d22bfd24bb8fd02954 } from '@/components/ThumbnailCellField'
-import { default as default_248a85e7cfa8f0b2afef7e07f495e9d3 } from '@/components/ThumbnailPreviewField'
+import { ThumbnailCountCell as ThumbnailCountCell_20f50f1e22ddedc47dcaf279484a1bcc } from '@/components/admin/ThumbnailCountCell'
+import { ThumbnailGallery as ThumbnailGallery_5045a532900386705a7ee62fcff6e4e0 } from '@/components/admin/ThumbnailGallery'
 
 export const importMap = {
-  "@/components/ThumbnailCellField#default": default_0c0df27a382a32d22bfd24bb8fd02954,
-  "@/components/ThumbnailPreviewField#default": default_248a85e7cfa8f0b2afef7e07f495e9d3
+  "@/components/admin/ThumbnailCountCell#ThumbnailCountCell": ThumbnailCountCell_20f50f1e22ddedc47dcaf279484a1bcc,
+  "@/components/admin/ThumbnailGallery#ThumbnailGallery": ThumbnailGallery_5045a532900386705a7ee62fcff6e4e0
 }
