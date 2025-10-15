@@ -1,4 +1,7 @@
 import type { CollectionConfig } from 'payload'
+import { generateThumbnailsSharp } from '@/lib/generateThumbnailsSharp'
+import { generateThumbnailsJimp } from '@/lib/generateThumbnailsJimp'
+import { uploadThumbnailsToR2 } from '@/lib/uploadThumbnails'
 
 export const Media: CollectionConfig = {
   slug: 'media',
@@ -87,7 +90,11 @@ export const Media: CollectionConfig = {
       label: 'Generated Thumbnails',
       admin: {
         readOnly: true,
-        description: 'Generated thumbnail sizes (JSON)',
+        description: 'Generated thumbnail sizes',
+        components: {
+          Field: '@/components/admin/ThumbnailGallery#ThumbnailGallery',
+          Cell: '@/components/admin/ThumbnailCountCell#ThumbnailCountCell',
+        },
       },
     },
     {
@@ -168,5 +175,66 @@ export const Media: CollectionConfig = {
       ],
     },
   ],
+  hooks: {
+    beforeChange: [
+      async ({ data, req }) => {
+        // Generate thumbnails when a new image is uploaded
+        if (req.file && req.file.data) {
+          console.log(`🎨 Processing image upload: ${req.file.name}`)
+
+          // Detect runtime: Workers or Node.js
+          const isWorkersRuntime = typeof process === 'undefined' ||
+            (typeof globalThis !== 'undefined' && 'caches' in globalThis)
+
+          try {
+            let thumbnails
+            if (isWorkersRuntime) {
+              console.log('🌐 Using Jimp (Workers runtime)')
+              thumbnails = await generateThumbnailsJimp(
+                req.file.data,
+                req.file.name,
+                req.file.mimetype
+              )
+            } else {
+              console.log('🖥️  Using Sharp (Node.js runtime)')
+              thumbnails = await generateThumbnailsSharp(
+                req.file.data,
+                req.file.name,
+                req.file.mimetype
+              )
+            }
+
+            // Upload thumbnails to R2
+            // Get cloudflare context from global (stored during config initialization)
+            const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
+            const bucket = cloudflare?.env?.R2
+            if (bucket) {
+              console.log('📦 Found R2 bucket from cloudflare context')
+              thumbnails = await uploadThumbnailsToR2(thumbnails, bucket, 'media')
+            } else {
+              console.warn('⚠️  R2 bucket not found - storing metadata only')
+              console.warn('Cloudflare context available:', !!cloudflare)
+              console.warn('Cloudflare env available:', !!cloudflare?.env)
+              // Remove buffers from metadata if we can't upload
+              thumbnails = thumbnails.map(t => {
+                const { buffer, ...rest } = t
+                return rest
+              })
+            }
+
+            // Store thumbnails as JSON (without buffers)
+            data.imageSizes = thumbnails
+            console.log(`✅ Stored ${thumbnails.length} thumbnail metadata entries`)
+          } catch (error) {
+            console.error('❌ Thumbnail generation failed:', error)
+            // Don't fail the upload if thumbnail generation fails
+            data.imageSizes = []
+          }
+        }
+
+        return data
+      },
+    ],
+  },
   timestamps: true,
 }

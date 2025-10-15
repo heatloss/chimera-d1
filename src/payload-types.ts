@@ -281,7 +281,7 @@ export interface Media {
    */
   caption?: string | null;
   /**
-   * Generated thumbnail sizes (JSON)
+   * Generated thumbnail sizes
    */
   imageSizes?:
     | {

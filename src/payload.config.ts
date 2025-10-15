@@ -23,6 +23,11 @@ const cloudflare =
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
 
+// Store cloudflare context globally for access in hooks
+if (typeof globalThis !== 'undefined') {
+  (globalThis as any).__CLOUDFLARE_CONTEXT__ = cloudflare
+}
+
 export default buildConfig({
   admin: {
     user: Users.slug,
