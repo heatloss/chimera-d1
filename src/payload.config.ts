@@ -14,10 +14,18 @@ import { Media } from './collections/Media'
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
+// Detect if we're running in Workers runtime (not build time)
+// In Workers, process.argv is undefined or doesn't contain node executable path
+const isWorkersRuntime = typeof process === 'undefined' ||
+  !process.versions?.node ||
+  (process.argv && !process.argv[0]?.includes('node'))
+
 // Use remote bindings only for actual deployment, not during build
 const cloudflareRemoteBindings = process.env.CLOUDFLARE_ENV !== undefined && process.env.NODE_ENV === 'production'
-const cloudflare =
-  process.argv.find((value) => value.match(/^(generate|migrate):?/)) || !cloudflareRemoteBindings
+
+const cloudflare = isWorkersRuntime
+  ? await getCloudflareContext({ async: true })
+  : process.argv.find((value) => value.match(/^(generate|migrate):?/)) || !cloudflareRemoteBindings
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
 
@@ -49,11 +57,6 @@ export default buildConfig({
   // database-adapter-config-start
   db: sqliteD1Adapter({
     binding: cloudflare.env.D1,
-    // WORKAROUND: Configure for manual UUID handling
-    // See WORKAROUND-UUID.md for full explanation
-    // @ts-expect-error - Runtime supports 'text' but types don't include it yet
-    idType: 'text', // Use TEXT columns for IDs instead of INTEGER
-    allowIDOnCreate: true, // Allow passing custom IDs to payload.create()
   }),
   // database-adapter-config-end
   plugins: [
