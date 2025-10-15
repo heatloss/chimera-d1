@@ -68,6 +68,9 @@ export interface Config {
   blocks: {};
   collections: {
     users: User;
+    comics: Comic;
+    chapters: Chapter;
+    pages: Page;
     media: Media;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -76,6 +79,9 @@ export interface Config {
   collectionsJoins: {};
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
+    comics: ComicsSelect<false> | ComicsSelect<true>;
+    chapters: ChaptersSelect<false> | ChaptersSelect<true>;
+    pages: PagesSelect<false> | PagesSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -119,6 +125,14 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
+  /**
+   * Unique public identifier for this user
+   */
+  uuid: string;
+  /**
+   * User role for access control
+   */
+  role: 'admin' | 'editor' | 'creator' | 'reader';
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -139,11 +153,161 @@ export interface User {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "comics".
+ */
+export interface Comic {
+  id: number;
+  /**
+   * Unique public identifier for this comic
+   */
+  uuid: string;
+  /**
+   * The name of your webcomic series
+   */
+  title: string;
+  /**
+   * URL-friendly version of the title (e.g., "my-awesome-comic")
+   */
+  slug: string;
+  /**
+   * A brief summary of your webcomic for readers
+   */
+  description?: string | null;
+  author: number | User;
+  /**
+   * Main cover art for the comic series
+   */
+  coverImage?: (number | null) | Media;
+  /**
+   * Team members who work on this comic
+   */
+  credits?:
+    | {
+        role: 'writer' | 'artist' | 'penciller' | 'inker' | 'colorist' | 'letterer' | 'editor' | 'other';
+        /**
+         * Only used if "Other" is selected above
+         */
+        customRole?: string | null;
+        name: string;
+        /**
+         * Optional link to creator's website or social media
+         */
+        url?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  status: 'draft' | 'published' | 'hiatus' | 'completed';
+  publishSchedule: 'daily' | 'weekly' | 'twice-weekly' | 'monthly' | 'irregular' | 'completed' | 'hiatus';
+  /**
+   * Select all genres that apply to your comic
+   */
+  genres?:
+    | (
+        | 'action-adventure'
+        | 'alternate-history'
+        | 'comedy'
+        | 'cyberpunk'
+        | 'drama'
+        | 'dystopian'
+        | 'educational'
+        | 'erotica'
+        | 'fairytale'
+        | 'fan-comic'
+        | 'fantasy'
+        | 'historical'
+        | 'horror'
+        | 'magical-girl'
+        | 'mystery'
+        | 'nonfiction'
+        | 'parody'
+        | 'post-apocalyptic'
+        | 'romance'
+        | 'satire'
+        | 'sci-fi'
+        | 'slice-of-life'
+        | 'sports'
+        | 'steampunk'
+        | 'superhero'
+        | 'urban-fantasy'
+        | 'western'
+      )[]
+    | null;
+  /**
+   * Custom tags for better searchability (e.g., "lgbtq", "anthropomorphic", "noir")
+   */
+  tags?: string[] | null;
+  /**
+   * Check if this comic contains mature/adult content
+   */
+  isNSFW?: boolean | null;
+  seoMeta?: {
+    /**
+     * SEO title (defaults to comic title if empty)
+     */
+    metaTitle?: string | null;
+    /**
+     * SEO description (defaults to comic description if empty)
+     */
+    metaDescription?: string | null;
+    /**
+     * Image for social media sharing (defaults to cover image)
+     */
+    socialImage?: (number | null) | Media;
+  };
+  stats?: {
+    totalPages?: number | null;
+    totalChapters?: number | null;
+    lastPagePublished?: string | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media".
  */
 export interface Media {
   id: number;
-  alt: string;
+  /**
+   * Unique public identifier for this media item
+   */
+  uuid: string;
+  /**
+   * Optional alt text (for webcomics, alt text is usually set on the page)
+   */
+  alt?: string | null;
+  /**
+   * Optional caption or description
+   */
+  caption?: string | null;
+  /**
+   * Generated thumbnail sizes (JSON)
+   */
+  imageSizes?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * What type of image is this?
+   */
+  mediaType: 'general' | 'comic_page' | 'comic_cover' | 'chapter_cover' | 'user_avatar' | 'website_asset';
+  uploadedBy?: (number | null) | User;
+  /**
+   * Whether this image can be viewed by the public
+   */
+  isPublic?: boolean | null;
+  comicMeta?: {
+    /**
+     * Which comic this image belongs to
+     */
+    relatedComic?: (number | null) | Comic;
+    isNSFW?: boolean | null;
+  };
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -155,6 +319,175 @@ export interface Media {
   height?: number | null;
 }
 /**
+ * Organize comic pages into chapters. Order is currently read-only - use the Move Chapter API endpoint to reorder chapters without conflicts.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "chapters".
+ */
+export interface Chapter {
+  id: number;
+  /**
+   * Unique public identifier for this chapter
+   */
+  uuid: string;
+  /**
+   * Which comic series this chapter belongs to
+   */
+  comic: number | Comic;
+  /**
+   * Name of this chapter (e.g., "The Beginning", "Dark Waters")
+   */
+  title: string;
+  /**
+   * Chapter order (read-only). To move: POST /api/move-chapter with chapterId and direction ("up"/"down")
+   */
+  order?: number | null;
+  /**
+   * Optional summary of what happens in this chapter
+   */
+  description?: string | null;
+  seoMeta?: {
+    /**
+     * URL-friendly chapter identifier (auto-generated if empty)
+     */
+    slug?: string | null;
+    /**
+     * SEO title (defaults to chapter title if empty)
+     */
+    metaTitle?: string | null;
+    /**
+     * SEO description for this chapter
+     */
+    metaDescription?: string | null;
+  };
+  stats?: {
+    /**
+     * Number of pages in this chapter
+     */
+    pageCount?: number | null;
+    /**
+     * First page number in this chapter
+     */
+    firstPageNumber?: number | null;
+    /**
+     * Last page number in this chapter
+     */
+    lastPageNumber?: number | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * After saving a page, you can use the "Duplicate" button to quickly create the next page with incremented page number.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pages".
+ */
+export interface Page {
+  id: number;
+  /**
+   * Unique public identifier for this page
+   */
+  uuid: string;
+  /**
+   * Which comic series this page belongs to
+   */
+  comic: number | Comic;
+  /**
+   * Which chapter this page belongs to (optional)
+   */
+  chapter?: (number | null) | Chapter;
+  /**
+   * Page number within this chapter (0 = chapter cover, 1+ = regular pages)
+   */
+  chapterPageNumber: number;
+  /**
+   * Auto-calculated sequential number across entire comic (used for navigation)
+   */
+  globalPageNumber?: number | null;
+  /**
+   * Optional title for this specific page
+   */
+  title?: string | null;
+  displayTitle?: string | null;
+  /**
+   * The main comic page image that readers will see
+   */
+  pageImage?: (number | null) | Media;
+  /**
+   * Optional additional images for multi-image pages
+   */
+  pageExtraImages?:
+    | {
+        image: number | Media;
+        /**
+         * Accessibility description for this specific image
+         */
+        altText?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Custom thumbnail image (auto-populated from main page image if empty)
+   */
+  thumbnailImage?: (number | null) | Media;
+  /**
+   * Accessibility description of what happens in this page
+   */
+  altText?: string | null;
+  /**
+   * Optional commentary, behind-the-scenes notes, or author thoughts (Markdown supported)
+   */
+  authorNotes?: string | null;
+  status: 'draft' | 'scheduled' | 'published';
+  /**
+   * When this page should go live (for scheduling)
+   */
+  publishedDate?: string | null;
+  navigation?: {
+    /**
+     * Previous page in the series
+     */
+    previousPage?: (number | null) | Page;
+    /**
+     * Next page in the series
+     */
+    nextPage?: (number | null) | Page;
+    isFirstPage?: boolean | null;
+    isLastPage?: boolean | null;
+  };
+  seoMeta?: {
+    /**
+     * URL-friendly page identifier (auto-generated if empty)
+     */
+    slug?: string | null;
+    /**
+     * SEO title (auto-generated if empty)
+     */
+    metaTitle?: string | null;
+    /**
+     * SEO description (uses alt text if empty)
+     */
+    metaDescription?: string | null;
+  };
+  stats?: {
+    /**
+     * Number of times this page has been viewed
+     */
+    viewCount?: number | null;
+    /**
+     * When this page was first viewed by a reader
+     */
+    firstViewed?: string | null;
+    /**
+     * When this page was last viewed by a reader
+     */
+    lastViewed?: string | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents".
  */
@@ -164,6 +497,18 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'users';
         value: number | User;
+      } | null)
+    | ({
+        relationTo: 'comics';
+        value: number | Comic;
+      } | null)
+    | ({
+        relationTo: 'chapters';
+        value: number | Chapter;
+      } | null)
+    | ({
+        relationTo: 'pages';
+        value: number | Page;
       } | null)
     | ({
         relationTo: 'media';
@@ -216,6 +561,8 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  uuid?: T;
+  role?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
@@ -235,10 +582,141 @@ export interface UsersSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "comics_select".
+ */
+export interface ComicsSelect<T extends boolean = true> {
+  uuid?: T;
+  title?: T;
+  slug?: T;
+  description?: T;
+  author?: T;
+  coverImage?: T;
+  credits?:
+    | T
+    | {
+        role?: T;
+        customRole?: T;
+        name?: T;
+        url?: T;
+        id?: T;
+      };
+  status?: T;
+  publishSchedule?: T;
+  genres?: T;
+  tags?: T;
+  isNSFW?: T;
+  seoMeta?:
+    | T
+    | {
+        metaTitle?: T;
+        metaDescription?: T;
+        socialImage?: T;
+      };
+  stats?:
+    | T
+    | {
+        totalPages?: T;
+        totalChapters?: T;
+        lastPagePublished?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "chapters_select".
+ */
+export interface ChaptersSelect<T extends boolean = true> {
+  uuid?: T;
+  comic?: T;
+  title?: T;
+  order?: T;
+  description?: T;
+  seoMeta?:
+    | T
+    | {
+        slug?: T;
+        metaTitle?: T;
+        metaDescription?: T;
+      };
+  stats?:
+    | T
+    | {
+        pageCount?: T;
+        firstPageNumber?: T;
+        lastPageNumber?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pages_select".
+ */
+export interface PagesSelect<T extends boolean = true> {
+  uuid?: T;
+  comic?: T;
+  chapter?: T;
+  chapterPageNumber?: T;
+  globalPageNumber?: T;
+  title?: T;
+  displayTitle?: T;
+  pageImage?: T;
+  pageExtraImages?:
+    | T
+    | {
+        image?: T;
+        altText?: T;
+        id?: T;
+      };
+  thumbnailImage?: T;
+  altText?: T;
+  authorNotes?: T;
+  status?: T;
+  publishedDate?: T;
+  navigation?:
+    | T
+    | {
+        previousPage?: T;
+        nextPage?: T;
+        isFirstPage?: T;
+        isLastPage?: T;
+      };
+  seoMeta?:
+    | T
+    | {
+        slug?: T;
+        metaTitle?: T;
+        metaDescription?: T;
+      };
+  stats?:
+    | T
+    | {
+        viewCount?: T;
+        firstViewed?: T;
+        lastViewed?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media_select".
  */
 export interface MediaSelect<T extends boolean = true> {
+  uuid?: T;
   alt?: T;
+  caption?: T;
+  imageSizes?: T;
+  mediaType?: T;
+  uploadedBy?: T;
+  isPublic?: T;
+  comicMeta?:
+    | T
+    | {
+        relatedComic?: T;
+        isNSFW?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
   url?: T;
