@@ -17,7 +17,8 @@ import { Pages } from './collections/Pages'
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
-const cloudflareRemoteBindings = process.env.NODE_ENV === 'production'
+// Use remote bindings only for actual deployment, not during build
+const cloudflareRemoteBindings = process.env.CLOUDFLARE_ENV !== undefined && process.env.NODE_ENV === 'production'
 const cloudflare =
   process.argv.find((value) => value.match(/^(generate|migrate):?/)) || !cloudflareRemoteBindings
     ? await getCloudflareContextFromWrangler()
@@ -41,8 +42,27 @@ export default buildConfig({
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
+  // CORS configuration for frontend (port 8888) to access API (port 3333)
+  cors: [
+    'http://localhost:8888', // Frontend dev server
+    'http://localhost:3333', // API dev server
+    'http://localhost:3000', // Default Next.js port (fallback)
+  ],
+  // CSRF protection configuration
+  csrf: [
+    'http://localhost:3333',
+    'http://localhost:8888',
+    'http://localhost:3000',
+  ],
   // database-adapter-config-start
-  db: sqliteD1Adapter({ binding: cloudflare.env.D1 }),
+  db: sqliteD1Adapter({
+    binding: cloudflare.env.D1,
+    // WORKAROUND: Configure for manual UUID handling
+    // See WORKAROUND-UUID.md for full explanation
+    // @ts-expect-error - Runtime supports 'text' but types don't include it yet
+    idType: 'text', // Use TEXT columns for IDs instead of INTEGER
+    allowIDOnCreate: true, // Allow passing custom IDs to payload.create()
+  }),
   // database-adapter-config-end
   plugins: [
     // storage-adapter-placeholder
