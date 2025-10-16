@@ -18,7 +18,8 @@
       "Bash(/Users/mike/Sites/chimera-d1/scripts/copy-r2-media.sh:*)",
       "Bash(pnpm wrangler r2 object get:*)",
       "Read(//Users/mike/Sites/chimera-cms/**)",
-      "Bash(/Users/mike/Sites/chimera-d1/scripts/upload-media-to-r2.sh:*)"
+      "Bash(/Users/mike/Sites/chimera-d1/scripts/upload-media-to-r2.sh:*)",
+      "Read(//tmp/**)"
     ],
     "deny": [],
     "ask": []
