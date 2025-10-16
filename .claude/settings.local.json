@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sqlite3:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(pnpm rebuild:*)",
+      "Bash(node-gyp:*)",
+      "Bash(chmod:*)",
+      "Bash(/Users/mike/Sites/chimera-d1/scripts/backup-database.sh:*)",
+      "Bash(cat:*)",
+      "Read(//private/tmp/**)",
+      "Bash(pnpm tsx:*)",
+      "Bash(tee:*)",
+      "Bash(pnpm wrangler d1 execute:*)",
+      "Bash(pnpm wrangler r2 bucket list:*)",
+      "Bash(pnpm wrangler r2 object list:*)",
+      "Bash(/Users/mike/Sites/chimera-d1/scripts/copy-r2-media.sh:*)",
+      "Bash(pnpm wrangler r2 object get:*)",
+      "Read(//Users/mike/Sites/chimera-cms/**)",
+      "Bash(/Users/mike/Sites/chimera-d1/scripts/upload-media-to-r2.sh:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
