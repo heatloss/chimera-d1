@@ -20,7 +20,7 @@
       "binding": "D1",
       "database_id": "79308db7-d924-4126-9794-df01af62c0ba",
       "database_name": "chimera-d1",
-      "remote": false,
+      "remote": true,
     },
   ],
   "services": [
