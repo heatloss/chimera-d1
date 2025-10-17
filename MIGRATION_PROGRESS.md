@@ -1,7 +1,7 @@
 # Chimera CMS Migration Progress
 
 ## Overview
-Migration from chimera-cms (MongoDB + local storage) to chimera-d1 (Cloudflare D1 + R2) using Payload CMS v3.
+Migration from chimera-cms (PostgreSQL + local storage) to chimera-d1 (Cloudflare D1 + R2) using Payload CMS v3.
 
 **Status**: ✅ Successfully deployed to production and fully operational!
 
@@ -83,6 +83,19 @@ Tested all core APIs with remote D1:
 - ✅ Environment switching tested (local ↔ remote)
 - ✅ R2 bucket bindings configured
 - ✅ D1 database bindings configured
+- ✅ Added observability logging configuration for production debugging
+
+### 7. Production Deployment & Issue Resolution
+- ✅ Deployed to Cloudflare Workers (https://chimera-d1.mike-17c.workers.dev)
+- ✅ Fixed critical runtime error: `Error: No such module "wrangler"`
+  - **Issue**: `payload.config.ts` was importing wrangler module in production runtime
+  - **Root Cause**: Conditional logic wasn't properly detecting Cloudflare Workers environment
+  - **Solution**: Changed detection to use `navigator.userAgent === 'Cloudflare-Workers'`
+  - **File Modified**: `src/payload.config.ts` lines 20-28
+- ✅ Verified all APIs working in production
+- ✅ Verified admin interface accessible (HTTP 200)
+
+**Key Learning**: The wrangler module is only available during local development via `getPlatformProxy()`. In production Workers runtime, Cloudflare context is provided by OpenNext through `getCloudflareContext()`.
 
 ---
 
@@ -102,16 +115,22 @@ Tested all core APIs with remote D1:
 
 ### Schema Differences from Chimera-CMS
 - Added `uuid` column to all main tables (comics, chapters, pages, media)
-- Normalized relationships using foreign keys instead of MongoDB references
+- Maintained normalized relationships using foreign keys (consistent with PostgreSQL approach)
 - Added navigation fields to pages (previous_page_id, next_page_id, is_first_page, is_last_page)
-- Separated credits into junction table instead of embedded array
-- Media thumbnails stored as JSON array instead of separate documents
+- Kept credits in junction table structure
+- Media thumbnails stored as JSON array in D1
 
 ### Cloudflare D1 Limitations Encountered
 1. ❌ Cannot use `BEGIN TRANSACTION` in SQL files (use native APIs instead)
 2. ❌ Cannot use UNION ALL with many terms (limit appears to be ~5)
 3. ✅ PRAGMA statements work for foreign key control
 4. ✅ SQLite .dump format compatible with modifications
+
+### Cloudflare Workers Runtime Constraints
+1. ❌ Cannot import `wrangler` module at runtime (only available in local dev)
+2. ✅ Must use `getCloudflareContext()` for accessing D1/R2 bindings in production
+3. ✅ Detect Workers environment via `navigator.userAgent === 'Cloudflare-Workers'`
+4. ⚠️ Build warnings about `eval()` usage are non-blocking (from Payload migrations system)
 
 ---
 
@@ -220,7 +239,9 @@ All issues have been resolved. The CMS is fully operational in production.
 4. **Remote Schema** - Created correct schema on remote D1
 5. **Data Sync** - Successfully synced all data to remote D1
 6. **API Testing** - Verified all APIs working with remote data
-7. **Next: Production Deployment** ⬅️ Current step
+7. **Production Deployment** - Deployed to Cloudflare Workers
+8. **Bug Fix** - Resolved wrangler import error in production
+9. **Verification** - Confirmed all systems operational ✅ **COMPLETE**
 
 ---
 
