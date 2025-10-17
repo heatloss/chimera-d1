@@ -17,12 +17,15 @@ import { Pages } from './collections/Pages'
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
-// Use remote bindings only for actual deployment, not during build
-const cloudflareRemoteBindings = process.env.CLOUDFLARE_ENV !== undefined && process.env.NODE_ENV === 'production'
-const cloudflare =
-  process.argv.find((value) => value.match(/^(generate|migrate):?/)) || !cloudflareRemoteBindings
-    ? await getCloudflareContextFromWrangler()
-    : await getCloudflareContext({ async: true })
+// Detect if we're in Cloudflare Workers runtime (no wrangler available)
+// In Workers: use getCloudflareContext (already initialized by OpenNext)
+// In dev/build: use getCloudflareContextFromWrangler (imports wrangler for local dev)
+const isCloudflareWorkers = typeof globalThis.navigator !== 'undefined' &&
+  globalThis.navigator.userAgent === 'Cloudflare-Workers'
+
+const cloudflare = isCloudflareWorkers
+  ? await getCloudflareContext({ async: true })
+  : await getCloudflareContextFromWrangler()
 
 // Store cloudflare context globally for access in hooks
 if (typeof globalThis !== 'undefined') {
@@ -75,11 +78,14 @@ export default buildConfig({
 
 // Adapted from https://github.com/opennextjs/opennextjs-cloudflare/blob/d00b3a13e42e65aad76fba41774815726422cc39/packages/cloudflare/src/api/cloudflare-context.ts#L328C36-L328C46
 function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
+  // Use remote bindings in production, local bindings in dev
+  const useRemoteBindings = process.env.NODE_ENV === 'production'
+
   return import(/* webpackIgnore: true */ `${'__wrangler'.replaceAll('_', '')}`).then(
     ({ getPlatformProxy }) =>
       getPlatformProxy({
         environment: process.env.CLOUDFLARE_ENV,
-        experimental: { remoteBindings: cloudflareRemoteBindings },
+        experimental: { remoteBindings: useRemoteBindings },
       } satisfies GetPlatformProxyOptions),
   )
 }
