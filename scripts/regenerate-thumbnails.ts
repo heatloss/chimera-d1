@@ -10,14 +10,22 @@
  * This script reads the original image from R2, generates thumbnails using Sharp,
  * and uploads them back to R2.
  *
- * Usage: pnpm tsx scripts/regenerate-thumbnails.ts
+ * Usage:
+ *   pnpm tsx scripts/regenerate-thumbnails.ts          # Only regenerate missing thumbnails
+ *   pnpm tsx scripts/regenerate-thumbnails.ts --force  # Regenerate ALL thumbnails
  */
 
+import 'dotenv/config'
 import { getPayload } from 'payload'
 import config from '../src/payload.config'
 
 async function main() {
+  const forceRegenerate = process.argv.includes('--force')
+
   console.log('🎨 Starting thumbnail regeneration\n')
+  if (forceRegenerate) {
+    console.log('⚠️  FORCE MODE: Will regenerate ALL thumbnails\n')
+  }
 
   // Initialize Payload
   console.log('⚙️  Initializing Payload...')
@@ -32,26 +40,35 @@ async function main() {
   }
 
   try {
-    // Find all media items without thumbnails
+    // Find media items - either all images or only those without thumbnails
+    const whereCondition = forceRegenerate
+      ? {
+          and: [
+            { filename: { exists: true } },
+            { mimeType: { like: 'image/%' } },
+          ]
+        }
+      : {
+          and: [
+            { filename: { exists: true } },
+            { mimeType: { like: 'image/%' } },
+            {
+              or: [
+                { imageSizes: { equals: null } },
+                { imageSizes: { equals: '[]' } },
+                { imageSizes: { equals: 'null' } },
+              ]
+            }
+          ]
+        }
+
     const mediaItems = await payload.find({
       collection: 'media',
       limit: 1000,
-      where: {
-        and: [
-          { filename: { exists: true } },
-          { mimeType: { like: 'image/%' } },
-          {
-            or: [
-              { imageSizes: { equals: null } },
-              { imageSizes: { equals: '[]' } },
-              { imageSizes: { equals: 'null' } },
-            ]
-          }
-        ]
-      }
+      where: whereCondition,
     })
 
-    console.log(`\n📊 Found ${mediaItems.docs.length} media items needing thumbnails\n`)
+    console.log(`\n📊 Found ${mediaItems.docs.length} media items ${forceRegenerate ? 'to process' : 'needing thumbnails'}\n`)
 
     if (mediaItems.docs.length === 0) {
       console.log('✅ No media items need thumbnail regeneration')
@@ -65,8 +82,8 @@ async function main() {
       try {
         console.log(`\n🖼️  Processing: ${media.filename}`)
 
-        // Fetch original file from R2
-        const r2Key = `media/${media.filename}`
+        // Fetch original file from R2 (files are stored at root, not in media/ subdirectory)
+        const r2Key = media.filename
         const object = await bucket.get(r2Key)
 
         if (!object) {

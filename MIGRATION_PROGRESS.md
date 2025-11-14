@@ -195,13 +195,6 @@ sqlite3 <db_path> ".dump" | grep "INSERT" | grep -v "_cf_METADATA" | grep -v "IN
 
 ## Pending Tasks
 
-### Completed Production Deployment
-- ✅ Deploy CMS to Cloudflare production
-- ✅ Fixed wrangler module import error in payload.config.ts
-- ✅ Test deployed version functionality
-- ✅ Verify admin interface works in production (https://chimera-d1.mike-17c.workers.dev/admin)
-- ✅ Verify API endpoints work in production
-
 ### API Enhancements
 - [ ] Implement frontend-friendly API endpoints:
   - `/api/media/uuid/:uuid` - Get media by UUID
@@ -221,6 +214,35 @@ sqlite3 <db_path> ".dump" | grep "INSERT" | grep -v "_cf_METADATA" | grep -v "IN
 - [ ] Add caching headers for media files
 - [ ] Implement pagination best practices
 - [ ] Add API rate limiting
+
+---
+
+## Recent Updates (2025-11-14)
+
+### Thumbnail Optimization
+- ✅ Reduced thumbnail sizes from 7 to 2 (71% reduction)
+  - **Kept**: `thumbnail` (400px), `thumbnail_large` (800px)
+  - **Removed**: `thumbnail_small`, `webcomic_mobile`, `cover_image`, `social_preview`, `avatar`
+- ✅ Regenerated thumbnails for 39 media items (3 failed due to missing source files)
+- ✅ Total thumbnails reduced from 294 to 78
+- ✅ Enhanced `regenerate-thumbnails.ts` script with `--force` flag for bulk regeneration
+
+### Package Updates
+- ✅ **Payload CMS**: 3.59.1 → 3.64.0
+- ✅ **Wrangler**: 4.42.2 → 4.47.0
+- ✅ **Next.js**: 15.4.4 → 16.0.3 (major version upgrade)
+- ✅ All Payload plugin packages updated to 3.64.0
+- ✅ **Turbopack enabled** (Next.js 16's default bundler - 2-5x faster builds)
+
+### Build System Improvements
+- ✅ Fixed Turbopack compatibility with Payload's `pino` logger
+  - Added `pino`, `thread-stream`, `pino-pretty` as dev dependencies
+  - Configured `serverExternalPackages` in `next.config.ts`
+- ✅ Fixed TypeScript error in `payload.config.ts` for Wrangler 4.47.0
+- ✅ Verified Cloudflare deployment build works correctly
+
+### Important Note
+**Build Workflow**: When building for production, temporarily set `wrangler.jsonc` → `d1_databases[0].remote` to `false` during the build step, then restore to `true` for runtime/deployment. The build process requires local D1 access to generate static pages.
 
 ---
 
