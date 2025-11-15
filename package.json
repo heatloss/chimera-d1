@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build",
+    "build": "cross-env NEXT_TURBO_DISABLED=true NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build",
     "build:cloudflare": "pnpm run build && opennextjs-cloudflare build",
     "deploy": "pnpm run deploy:database && pnpm run deploy:app",
     "deploy:app": "opennextjs-cloudflare build --env=$CLOUDFLARE_ENV && opennextjs-cloudflare deploy --env=$CLOUDFLARE_ENV",
@@ -26,7 +26,7 @@
     "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.6.5",
+    "@opennextjs/cloudflare": "1.11.0",
     "@payloadcms/db-d1-sqlite": "3.59.1",
     "@payloadcms/next": "3.59.1",
     "@payloadcms/richtext-lexical": "3.59.1",
@@ -63,7 +63,7 @@
     "typescript": "5.7.3",
     "vite-tsconfig-paths": "5.1.4",
     "vitest": "3.2.3",
-    "wrangler": "~4.42.0"
+    "wrangler": "~4.47.0"
   },
   "engines": {
     "node": "^18.20.2 || >=20.9.0",
