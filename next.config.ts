@@ -5,9 +5,6 @@ const nextConfig: NextConfig = {
   // Your Next.js config here
   output: 'standalone', // Required for OpenNext Cloudflare builds
 
-  // Externalize server-only packages to avoid Turbopack bundling issues
-  serverExternalPackages: ['pino', 'thread-stream', 'pino-pretty'],
-
   webpack: (webpackConfig: any, { isServer }: any) => {
     webpackConfig.resolve.extensionAlias = {
       '.cjs': ['.cts', '.cjs'],
