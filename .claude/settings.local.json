@@ -26,7 +26,9 @@
       "Bash(curl -s https://chimera-d1.mike-17c.workers.dev/admin -I)",
       "Bash(head -5 sleep 10 echo \"Checking remote D1 schema...\" pnpm wrangler d1 execute chimera-d1 --remote --command \"SELECT name FROM sqlite_master WHERE type=''''table'''' AND name IN (''''chapters'''', ''''comics'''', ''''pages'''') ORDER BY name;\")",
       "Bash(curl -s 'https://chimera-d1.mike-17c.workers.dev/api/media?limit=2')",
-      "Bash(curl -s 'https://chimera-d1.mike-17c.workers.dev/api/pages?limit=2')"
+      "Bash(curl -s 'https://chimera-d1.mike-17c.workers.dev/api/pages?limit=2')",
+      "Bash(curl:*)",
+      "Bash(curl -I 'http://localhost:3333/api/get-pages/02005c61-99e8-4cec-b91c-76e5cb3efe2e')"
     ],
     "deny": [],
     "ask": []

@@ -3,6 +3,9 @@ import type { CollectionConfig } from 'payload'
 
 export const Media: CollectionConfig = {
   slug: 'media',
+  // Disable default REST API to prevent ID enumeration
+  // Use custom UUID-based routes at /api/get-media/[uuid]
+  disableAPI: true,
   admin: {
     useAsTitle: 'filename',
     group: 'Admin',
@@ -41,6 +44,14 @@ export const Media: CollectionConfig = {
     disableLocalStorage: true, // R2 only
     crop: false,
     focalPoint: false,
+    adminThumbnail: ({ doc }) => {
+      // Extract thumbnail URL from imageSizes array (new format)
+      if (Array.isArray(doc.imageSizes) && doc.imageSizes.length > 0) {
+        return doc.imageSizes[0].url
+      }
+      // Fallback to original file URL if no thumbnails
+      return doc.url || ''
+    },
   },
   fields: [
     // HYBRID UUID APPROACH: Keep INTEGER primary key, add UUID as regular field

@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
  * Example API route that demonstrates how to access media by UUID (not internal ID)
  *
  * Usage:
- *   GET /api/media-by-uuid/a7f3c2e1-4b5d-4c8a-9e2f-1d3b5c7a9f2e
+ *   GET /api/get-media/a7f3c2e1-4b5d-4c8a-9e2f-1d3b5c7a9f2e
  *
  * This is what you'd use in your frontend/public-facing code to prevent
  * exposing sequential integer IDs.
@@ -33,7 +33,14 @@ export async function GET(
     if (result.docs.length === 0) {
       return NextResponse.json(
         { error: 'Media not found' },
-        { status: 404 }
+        {
+          status: 404,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          }
+        }
       )
     }
 
@@ -51,12 +58,37 @@ export async function GET(
       filesize: media.filesize,
       width: media.width,
       height: media.height,
+    }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      }
     })
   } catch (error: any) {
     console.error('Error fetching media by UUID:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      }
     )
   }
+}
+
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    }
+  })
 }

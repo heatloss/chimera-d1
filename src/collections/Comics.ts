@@ -2,6 +2,9 @@ import type { CollectionConfig } from 'payload'
 
 export const Comics: CollectionConfig = {
   slug: 'comics',
+  // Disable default REST API to prevent ID enumeration
+  // Use custom UUID-based routes at /api/get-comics/[uuid]
+  disableAPI: true,
   admin: {
     useAsTitle: 'title',
     defaultColumns: ['title', 'author', 'status', 'publishSchedule', 'updatedAt'],

@@ -2,6 +2,9 @@ import type { CollectionConfig } from 'payload'
 
 export const Pages: CollectionConfig = {
   slug: 'pages',
+  // Disable default REST API to prevent ID enumeration
+  // Use custom UUID-based routes at /api/get-pages/[uuid]
+  disableAPI: true,
   admin: {
     useAsTitle: 'displayTitle',
     defaultColumns: ['displayTitle', 'comic', 'chapter', 'chapterPageNumber', 'globalPageNumber', 'status', 'publishedDate'],
