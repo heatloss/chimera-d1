@@ -156,11 +156,10 @@ export interface User {
  * via the `definition` "comics".
  */
 export interface Comic {
-  id: number;
   /**
-   * Unique public identifier for this comic
+   * Unique identifier (UUID)
    */
-  uuid: string;
+  id: string;
   /**
    * The name of your webcomic series
    */
@@ -177,7 +176,7 @@ export interface Comic {
   /**
    * Main cover art for the comic series
    */
-  coverImage?: (number | null) | Media;
+  coverImage?: (string | null) | Media;
   /**
    * Team members who work on this comic
    */
@@ -252,7 +251,7 @@ export interface Comic {
     /**
      * Image for social media sharing (defaults to cover image)
      */
-    socialImage?: (number | null) | Media;
+    socialImage?: (string | null) | Media;
   };
   stats?: {
     totalPages?: number | null;
@@ -267,11 +266,10 @@ export interface Comic {
  * via the `definition` "media".
  */
 export interface Media {
-  id: number;
   /**
-   * Unique public identifier for this media item
+   * Unique identifier (UUID)
    */
-  uuid: string;
+  id: string;
   /**
    * Optional alt text (for webcomics, alt text is usually set on the page)
    */
@@ -305,7 +303,7 @@ export interface Media {
     /**
      * Which comic this image belongs to
      */
-    relatedComic?: (number | null) | Comic;
+    relatedComic?: (string | null) | Comic;
     isNSFW?: boolean | null;
   };
   updatedAt: string;
@@ -325,15 +323,14 @@ export interface Media {
  * via the `definition` "chapters".
  */
 export interface Chapter {
-  id: number;
   /**
-   * Unique public identifier for this chapter
+   * Unique identifier (UUID)
    */
-  uuid: string;
+  id: string;
   /**
    * Which comic series this chapter belongs to
    */
-  comic: number | Comic;
+  comic: string | Comic;
   /**
    * Name of this chapter (e.g., "The Beginning", "Dark Waters")
    */
@@ -384,19 +381,18 @@ export interface Chapter {
  * via the `definition` "pages".
  */
 export interface Page {
-  id: number;
   /**
-   * Unique public identifier for this page
+   * Unique identifier (UUID)
    */
-  uuid: string;
+  id: string;
   /**
    * Which comic series this page belongs to
    */
-  comic: number | Comic;
+  comic: string | Comic;
   /**
    * Which chapter this page belongs to (optional)
    */
-  chapter?: (number | null) | Chapter;
+  chapter?: (string | null) | Chapter;
   /**
    * Page number within this chapter (0 = chapter cover, 1+ = regular pages)
    */
@@ -413,13 +409,13 @@ export interface Page {
   /**
    * The main comic page image that readers will see
    */
-  pageImage?: (number | null) | Media;
+  pageImage?: (string | null) | Media;
   /**
    * Optional additional images for multi-image pages
    */
   pageExtraImages?:
     | {
-        image: number | Media;
+        image: string | Media;
         /**
          * Accessibility description for this specific image
          */
@@ -430,7 +426,7 @@ export interface Page {
   /**
    * Custom thumbnail image (auto-populated from main page image if empty)
    */
-  thumbnailImage?: (number | null) | Media;
+  thumbnailImage?: (string | null) | Media;
   /**
    * Accessibility description of what happens in this page
    */
@@ -448,11 +444,11 @@ export interface Page {
     /**
      * Previous page in the series
      */
-    previousPage?: (number | null) | Page;
+    previousPage?: (string | null) | Page;
     /**
      * Next page in the series
      */
-    nextPage?: (number | null) | Page;
+    nextPage?: (string | null) | Page;
     isFirstPage?: boolean | null;
     isLastPage?: boolean | null;
   };
@@ -500,19 +496,19 @@ export interface PayloadLockedDocument {
       } | null)
     | ({
         relationTo: 'comics';
-        value: number | Comic;
+        value: string | Comic;
       } | null)
     | ({
         relationTo: 'chapters';
-        value: number | Chapter;
+        value: string | Chapter;
       } | null)
     | ({
         relationTo: 'pages';
-        value: number | Page;
+        value: string | Page;
       } | null)
     | ({
         relationTo: 'media';
-        value: number | Media;
+        value: string | Media;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -585,7 +581,7 @@ export interface UsersSelect<T extends boolean = true> {
  * via the `definition` "comics_select".
  */
 export interface ComicsSelect<T extends boolean = true> {
-  uuid?: T;
+  id?: T;
   title?: T;
   slug?: T;
   description?: T;
@@ -627,7 +623,7 @@ export interface ComicsSelect<T extends boolean = true> {
  * via the `definition` "chapters_select".
  */
 export interface ChaptersSelect<T extends boolean = true> {
-  uuid?: T;
+  id?: T;
   comic?: T;
   title?: T;
   order?: T;
@@ -654,7 +650,7 @@ export interface ChaptersSelect<T extends boolean = true> {
  * via the `definition` "pages_select".
  */
 export interface PagesSelect<T extends boolean = true> {
-  uuid?: T;
+  id?: T;
   comic?: T;
   chapter?: T;
   chapterPageNumber?: T;
@@ -704,7 +700,7 @@ export interface PagesSelect<T extends boolean = true> {
  * via the `definition` "media_select".
  */
 export interface MediaSelect<T extends boolean = true> {
-  uuid?: T;
+  id?: T;
   alt?: T;
   caption?: T;
   imageSizes?: T;

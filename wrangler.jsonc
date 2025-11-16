@@ -18,8 +18,8 @@
   "d1_databases": [
     {
       "binding": "D1",
-      "database_id": "79308db7-d924-4126-9794-df01af62c0ba",
-      "database_name": "chimera-d1",
+      "database_id": "212239a9-3733-4d02-ba19-91ccdd7ad660",
+      "database_name": "chimera-d1-uuid-test-v2",
       "remote": false,
     },
   ],

@@ -215,7 +215,7 @@
         },
         "_parent_id": {
           "name": "_parent_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -303,7 +303,7 @@
         },
         "parent_id": {
           "name": "parent_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -363,15 +363,8 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "uuid": {
-          "name": "uuid",
           "type": "text",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
@@ -405,7 +398,7 @@
         },
         "cover_image_id": {
           "name": "cover_image_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -450,7 +443,7 @@
         },
         "seo_meta_social_image_id": {
           "name": "seo_meta_social_image_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -496,13 +489,6 @@
         }
       },
       "indexes": {
-        "comics_uuid_idx": {
-          "name": "comics_uuid_idx",
-          "columns": [
-            "uuid"
-          ],
-          "isUnique": true
-        },
         "comics_slug_idx": {
           "name": "comics_slug_idx",
           "columns": [
@@ -610,7 +596,7 @@
         },
         "parent_id": {
           "name": "parent_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -664,21 +650,14 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "uuid": {
-          "name": "uuid",
           "type": "text",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
         "comic_id": {
           "name": "comic_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -765,13 +744,6 @@
         }
       },
       "indexes": {
-        "chapters_uuid_idx": {
-          "name": "chapters_uuid_idx",
-          "columns": [
-            "uuid"
-          ],
-          "isUnique": true
-        },
         "chapters_comic_idx": {
           "name": "chapters_comic_idx",
           "columns": [
@@ -825,7 +797,7 @@
         },
         "_parent_id": {
           "name": "_parent_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -839,7 +811,7 @@
         },
         "image_id": {
           "name": "image_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -912,28 +884,21 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "uuid": {
-          "name": "uuid",
           "type": "text",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
         "comic_id": {
           "name": "comic_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "chapter_id": {
           "name": "chapter_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -968,14 +933,14 @@
         },
         "page_image_id": {
           "name": "page_image_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
         "thumbnail_image_id": {
           "name": "thumbnail_image_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -1011,14 +976,14 @@
         },
         "navigation_previous_page_id": {
           "name": "navigation_previous_page_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
         "navigation_next_page_id": {
           "name": "navigation_next_page_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -1100,13 +1065,6 @@
         }
       },
       "indexes": {
-        "pages_uuid_idx": {
-          "name": "pages_uuid_idx",
-          "columns": [
-            "uuid"
-          ],
-          "isUnique": true
-        },
         "pages_comic_idx": {
           "name": "pages_comic_idx",
           "columns": [
@@ -1253,15 +1211,8 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "uuid": {
-          "name": "uuid",
           "type": "text",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
@@ -1311,7 +1262,7 @@
         },
         "comic_meta_related_comic_id": {
           "name": "comic_meta_related_comic_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -1391,13 +1342,6 @@
         }
       },
       "indexes": {
-        "media_uuid_idx": {
-          "name": "media_uuid_idx",
-          "columns": [
-            "uuid"
-          ],
-          "isUnique": true
-        },
         "media_uploaded_by_idx": {
           "name": "media_uploaded_by_idx",
           "columns": [
@@ -1568,28 +1512,28 @@
         },
         "comics_id": {
           "name": "comics_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
         "chapters_id": {
           "name": "chapters_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
         "pages_id": {
           "name": "pages_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
         "media_id": {
           "name": "media_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -1979,6 +1923,6 @@
   "internal": {
     "indexes": {}
   },
-  "id": "701a15ed-5f83-497a-8db1-7f4c4604e161",
+  "id": "cf072a4c-e597-4734-a279-3331e397c308",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }
