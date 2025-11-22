@@ -7,27 +7,6 @@ export const Users: CollectionConfig = {
   },
   auth: true,
   fields: [
-    // HYBRID UUID APPROACH: Keep INTEGER primary key, add UUID as regular field
-    {
-      name: 'uuid',
-      type: 'text',
-      label: 'Public ID',
-      required: true,
-      unique: true,
-      admin: {
-        readOnly: true,
-        position: 'sidebar',
-        description: 'Unique public identifier for this user',
-      },
-      hooks: {
-        beforeValidate: [
-          ({ value }) => {
-            // Auto-generate UUID if not provided
-            return value || crypto.randomUUID()
-          }
-        ]
-      }
-    },
     {
       name: 'role',
       type: 'select',

@@ -1,101 +1,244 @@
-# Payload Cloudflare Template
+# Chimera D1 - Webcomic CMS
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/payloadcms/payload/tree/main/templates/with-cloudflare-d1)
+A modern webcomic management system built with Payload CMS, Next.js 16, and Cloudflare infrastructure (D1 + R2).
 
-**This can only be deployed on Paid Workers right now due to size limits.** This template comes configured with the bare minimum to get started on anything you need.
+## Overview
 
-## Quick start
+Chimera D1 is a headless CMS designed specifically for managing webcomics. It provides:
 
-This template can be deployed directly to Cloudflare Workers by clicking the button to take you to the setup screen.
+- **Content Management**: Comics, chapters, and pages with full metadata
+- **Media Handling**: Image upload, storage, and thumbnail generation
+- **User Management**: Authentication, authorization, and role-based access
+- **API Endpoints**: RESTful APIs for frontend consumption
 
-From there you can connect your code to a git provider such Github or Gitlab, name your Workers, D1 Database and R2 Bucket as well as attach any additional environment variables or services you need.
+## Tech Stack
 
-## Quick Start - local setup
+- **Framework**: [Payload CMS](https://payloadcms.com/) v3.64.0
+- **Frontend**: [Next.js](https://nextjs.org/) 16.0.3 with Turbopack
+- **Database**: [Cloudflare D1](https://developers.cloudflare.com/d1/) (SQLite)
+- **Storage**: [Cloudflare R2](https://developers.cloudflare.com/r2/)
+- **Hosting**: [Cloudflare Workers](https://workers.cloudflare.com/)
 
-To spin up this template locally, follow these steps:
-
-### Clone
-
-After you click the `Deploy` button above, you'll want to have standalone copy of this repo on your machine. Cloudflare will connect your app to a git provider such as Github and you can access your code from there.
-
-### Local Development
-
-## How it works
-
-Out of the box, using [`Wrangler`](https://developers.cloudflare.com/workers/wrangler/) will automatically create local bindings for you to connect to the remote services and it can even create a local mock of the services you're using with Cloudflare.
-
-We've pre-configured Payload for you with the following:
+## Features
 
 ### Collections
 
-See the [Collections](https://payloadcms.com/docs/configuration/collections) docs for details on how to extend this functionality.
+- **Comics**: Series-level information with cover images, genres, credits, and metadata
+- **Chapters**: Organizational units within comics with ordering and SEO fields
+- **Pages**: Individual comic pages with images, navigation, and reader statistics
+- **Media**: Upload system with automatic thumbnail generation (2 sizes: 400px and 800px)
+- **Users**: Role-based access (Admin, Editor, Creator, Reader)
 
-- #### Users (Authentication)
+### Custom API Endpoints
 
-  Users are auth-enabled collections that have access to the admin panel.
+- `/api/comic-with-chapters/:id` - Fetch a comic with all chapters and pages in a single request
+- `/api/reorder-chapters` - Reorder chapters with authorization checks
 
-  For additional help, see the official [Auth Example](https://github.com/payloadcms/payload/tree/main/examples/auth) or the [Authentication](https://payloadcms.com/docs/authentication/overview#authentication-overview) docs.
+### Built-in Features
 
-- #### Media
+- Automatic thumbnail generation (Jimp for Workers, Sharp for dev)
+- R2 storage for all media files
+- Global page numbering across chapters
+- Chapter ordering system
+- SEO metadata for all content
 
-  This is the uploads enabled collection.
+## Quick Start
 
-### Image Storage (R2)
+### Prerequisites
 
-Images will be served from an R2 bucket which you can then further configure to use a CDN to serve for your frontend directly.
+- Node.js 18.20.2+ or 20.9.0+
+- pnpm 9 or 10
+- Cloudflare account (for deployment)
 
-### D1 Database
-
-The Worker will have direct access to a D1 SQLite database which Wrangler can connect locally to, just note that you won't have a connection string as you would typically with other providers.
-
-You can enable read replicas by adding `readReplicas: 'first-primary'` in the DB adapter and then enabling it on your D1 Cloudflare dashboard. Read more about this feature on [our docs](https://payloadcms.com/docs/database/sqlite#d1-read-replicas).
-
-## Working with Cloudflare
-
-Firstly, after installing dependencies locally you need to authenticate with Wrangler by running:
+### Installation
 
 ```bash
+# Clone the repository
+git clone <repository-url>
+cd chimera-d1
+
+# Install dependencies
+pnpm install
+
+# Login to Cloudflare (if deploying)
 pnpm wrangler login
 ```
 
-This will take you to Cloudflare to login and then you can use the Wrangler CLI locally for anything, use `pnpm wrangler help` to see all available options.
-
-Wrangler is pretty smart so it will automatically bind your services for local development just by running `pnpm dev`.
-
-## Deployments
-
-When you're ready to deploy, first make sure you have created your migrations:
+### Development
 
 ```bash
-pnpm payload migrate:create
+# Start the development server
+pnpm run dev
+
+# Access the admin panel
+open http://localhost:3333/admin
 ```
 
-Then run the following command:
+The dev server uses local Miniflare instances of D1 and R2.
+
+### Building for Production
 
 ```bash
+# Build the application
+pnpm run build
+
+# Deploy to Cloudflare Workers
 pnpm run deploy
 ```
 
-This will spin up Wrangler in `production` mode, run any created migrations, build the app and then deploy the bundle up to Cloudflare.
+## Database Migrations
 
-That's it! You can if you wish move these steps into your CI pipeline as well.
+```bash
+# Create a new migration
+pnpm payload migrate:create
 
-## Enabling logs
+# Apply migrations locally
+pnpm payload migrate
 
-By default logs are not enabled for your API, we've made this decision because it does run against your quota so we've left it opt-in. But you can easily enable logs in one click in the Cloudflare panel, [see docs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/#enable-workers-logs).
+# Apply migrations to production
+pnpm run deploy:database
+```
 
-## Known issues
+## Project Structure
 
-### GraphQL
+```
+chimera-d1/
+├── src/
+│   ├── app/              # Next.js app router
+│   │   └── api/          # Custom API routes
+│   ├── collections/      # Payload collections (Comics, Chapters, Pages, etc.)
+│   ├── lib/              # Utilities (thumbnail generation, etc.)
+│   ├── migrations/       # Database migrations
+│   └── payload.config.ts # Payload configuration
+├── scripts/              # Utility scripts (migration, backup, etc.)
+├── docs/                 # Documentation
+└── wrangler.jsonc        # Cloudflare configuration
+```
 
-We are currently waiting on some issues with GraphQL to be [fixed upstream in Workers](https://github.com/cloudflare/workerd/issues/5175) so full support for GraphQL is not currently guaranteed when deployed.
+## Configuration
 
-### Worker size limits
+### Environment Variables
 
-We currently recommend deploying this template to the Paid Workers plan due to bundle [size limits](https://developers.cloudflare.com/workers/platform/limits/#worker-size) of 3mb. We're actively trying to reduce our bundle footprint over time to better meet this metric.
+Create a `.env` file:
 
-This also applies to your own code, in the case of importing a lot of libraries you may find yourself limited by the bundle.
+```env
+PAYLOAD_SECRET=your-secret-key
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+```
 
-## Questions
+### Cloudflare Bindings
 
-If you have any issues or questions, reach out to us on [Discord](https://discord.com/invite/payload) or start a [GitHub discussion](https://github.com/payloadcms/payload/discussions).
+Edit `wrangler.jsonc` to configure D1 database and R2 bucket bindings:
+
+```jsonc
+{
+  "d1_databases": [{
+    "binding": "D1",
+    "database_name": "chimera-d1",
+    "database_id": "your-database-id"
+  }],
+  "r2_buckets": [{
+    "binding": "R2",
+    "bucket_name": "chimera-d1"
+  }]
+}
+```
+
+## Scripts
+
+- `backup-database.sh` - Backup local D1 database
+- `batch-generate-thumbnails.ts` - Batch thumbnail generation
+- `regenerate-thumbnails.ts` - Regenerate thumbnails for existing media
+- `copy-r2-media.sh` - Copy media between R2 buckets
+- `upload-media-to-r2.sh` - Upload local media to R2
+
+See [scripts/README.md](scripts/README.md) for detailed documentation.
+
+## API Usage
+
+### Native Payload Endpoints
+
+```bash
+# Get all comics
+GET /api/comics
+
+# Get a specific comic
+GET /api/comics/:id
+
+# Get chapters for a comic
+GET /api/chapters?where[comic][equals]=:comicId&sort=order
+
+# Get pages in a chapter
+GET /api/pages?where[chapter][equals]=:chapterId&sort=chapterPageNumber
+```
+
+### Custom Endpoints
+
+```bash
+# Get comic with all chapters and pages
+GET /api/comic-with-chapters/:id
+
+# Reorder chapters (requires auth)
+POST /api/reorder-chapters
+Body: { "comicId": 1, "chapterIds": [1, 2, 3] }
+```
+
+## Deployment
+
+### First-Time Deployment
+
+1. Create D1 database: `pnpm wrangler d1 create chimera-d1`
+2. Create R2 bucket: `pnpm wrangler r2 bucket create chimera-d1`
+3. Update `wrangler.jsonc` with database ID
+4. Run migrations: `pnpm run deploy:database`
+5. Deploy: `pnpm run deploy`
+
+### Subsequent Deployments
+
+```bash
+# Deploy with migrations
+pnpm run deploy
+
+# Or deploy without migrations
+pnpm wrangler deploy
+```
+
+## Troubleshooting
+
+### Build Issues
+
+If you encounter build errors, try:
+
+```bash
+pnpm rebuild better-sqlite3
+pnpm run build
+```
+
+### Migration Issues
+
+Ensure the dev server is running when executing scripts:
+
+```bash
+# Terminal 1
+pnpm run dev
+
+# Terminal 2
+pnpm payload migrate
+```
+
+## Documentation
+
+- [Migration Progress](MIGRATION_PROGRESS.md) - Full migration history and status
+- [Scripts README](scripts/README.md) - Detailed script documentation
+- [Payload CMS Docs](https://payloadcms.com/docs)
+- [Cloudflare D1 Docs](https://developers.cloudflare.com/d1/)
+- [Cloudflare R2 Docs](https://developers.cloudflare.com/r2/)
+
+## Production URLs
+
+- **API**: https://chimera-d1.mike-17c.workers.dev
+- **Admin Panel**: https://chimera-d1.mike-17c.workers.dev/admin
+
+## License
+
+Private project - All rights reserved

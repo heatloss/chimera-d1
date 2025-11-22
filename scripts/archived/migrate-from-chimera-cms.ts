@@ -14,7 +14,7 @@
 import 'dotenv/config'
 import Database from 'better-sqlite3'
 import { getPayload } from 'payload'
-import config from '../src/payload.config'
+import config from '../../src/payload.config'
 import path from 'path'
 import crypto from 'crypto'
 
