@@ -49,13 +49,14 @@ These endpoints ONLY provide UUID-based lookup and have no other value:
 - **Replacement**: Use native Payload API `/api/media/:id`
 - **File**: `src/app/api/get-media/[uuid]/route.ts`
 
-### Endpoints to KEEP & MODIFY (3)
+### Endpoints to KEEP & MODIFY (2)
 
 These endpoints provide genuine performance and functionality benefits beyond UUID lookup:
 
 #### 5. `/api/comic-with-chapters/[comicId]` - KEEP
 - **Value**: Aggregates comic + chapters + pages in ONE request (reduces round trips)
 - **Performance benefit**: Saves multiple API calls from frontend
+- **Why keep**: **HIGH VALUE** - Data aggregation provides significant performance improvement
 - **Modifications needed**:
   - Remove UUID detection logic (lines 29-68)
   - Accept only integer IDs
@@ -63,19 +64,10 @@ These endpoints provide genuine performance and functionality benefits beyond UU
 - **Usage**: `GET /api/comic-with-chapters/123` (integer ID)
 - **File**: `src/app/api/comic-with-chapters/[comicId]/route.ts`
 
-#### 6. `/api/comic-chapters/[uuid]` - KEEP & RENAME
-- **Value**: Gets all chapters for a comic in one optimized query
-- **Modifications needed**:
-  - Rename parameter from `uuid` to `comicId`
-  - Remove UUID lookup logic (lines 29-48)
-  - Accept only integer IDs
-  - Use `payload.findByID()` directly
-- **New usage**: `GET /api/comic-chapters/123` (integer ID)
-- **File**: `src/app/api/comic-chapters/[uuid]/route.ts` → rename to `[comicId]`
-
-#### 7. `/api/reorder-chapters` - KEEP
+#### 6. `/api/reorder-chapters` - KEEP
 - **Value**: Custom business logic for reordering with permission checks
 - **Not available** in native Payload API
+- **Why keep**: **HIGH VALUE** - Atomic updates, custom authorization, business logic encapsulation
 - **Modifications needed**:
   - Remove UUID detection logic (lines 47-67)
   - Accept only integer IDs
@@ -83,31 +75,43 @@ These endpoints provide genuine performance and functionality benefits beyond UU
 - **Usage**: `POST /api/reorder-chapters { comicId: 123, chapterIds: [1, 2, 3] }`
 - **File**: `src/app/api/reorder-chapters/route.ts`
 
+### Endpoint to NOT Create
+
+#### ~~`/api/comic-chapters/[comicId]`~~ - DO NOT CREATE
+- **Original purpose**: Gets all chapters for a comic
+- **Why not needed**: **LOW VALUE** - Native filtered endpoint works fine and is more flexible
+- **Use instead**: `GET /api/chapters?where[comic][equals]=123&sort=order`
+- **Analysis**:
+  - The custom endpoint only provides cleaner URLs and guaranteed sort order
+  - Native endpoint is more flexible (can add pagination, depth, additional filters)
+  - Less code to maintain
+  - The performance difference is negligible (same underlying query)
+
 ---
 
 ## Implementation Strategy
 
 ### Recommended Approach: Clean Branch from Main
 
-Start with a clean branch off `main` and add only the 3 useful endpoints, rather than pruning the `uuids-layer` branch.
+Start with a clean branch off `main` and add only the 2 high-value endpoints, rather than pruning the `uuids-layer` branch.
 
 **Why this approach?**
 
 1. **Main branch is cleaner** - Only has UUID fields in collection schemas, no custom endpoints to untangle
 2. **Simpler mental model** - Build up from working production code with targeted additions, rather than tearing down 7 endpoints
-3. **Easier to review** - Git diff clearly shows "3 new endpoints added" rather than "4 deleted, 3 heavily modified"
+3. **Easier to review** - Git diff clearly shows "2 new endpoints added" rather than "4 deleted, 2 modified, 1 not created"
 4. **Less risk** - Building up from known-good code rather than hoping you caught all UUID dependencies during deletion
 5. **UUID fields exist on main** - The hybrid approach UUID fields are already there, so removal is the same either way
 
 **Why not prune uuids-layer?**
 
 The `uuids-layer` branch has:
-- 7 endpoints (need to delete 4, modify 3)
+- 7 endpoints (need to delete 4, modify 2, skip 1)
 - UUID logic scattered throughout all endpoints
 - Higher risk of "did I catch everything?" errors
 - Harder to verify complete removal of UUID dependencies
 
-**Better approach**: Copy the aggregation logic from the 3 useful endpoints to a clean branch, stripping UUID support as you go.
+**Better approach**: Copy the aggregation logic from the 2 high-value endpoints to a clean branch, stripping UUID support as you go.
 
 ### Quick Start
 
@@ -157,17 +161,13 @@ Remove UUID fields from all collections:
 
 ### 3. API Endpoint Changes
 
-Since you're starting from `main` (which has no custom endpoints), you'll copy the 3 useful endpoints from `uuids-layer` and strip out UUID logic.
+Since you're starting from `main` (which has no custom endpoints), you'll copy the 2 high-value endpoints from `uuids-layer` and strip out UUID logic.
 
 **Tip**: To copy files from another branch without switching:
 ```bash
-# Copy a file from uuids-layer to current branch
-git show uuids-layer:src/app/api/comic-with-chapters/[comicId]/route.ts > src/app/api/comic-with-chapters/[comicId]/route.ts
-
 # Or checkout the entire directory structure
 mkdir -p src/app/api
 git checkout uuids-layer -- src/app/api/comic-with-chapters
-git checkout uuids-layer -- src/app/api/comic-chapters
 git checkout uuids-layer -- src/app/api/reorder-chapters
 
 # Then modify the files as described below
@@ -183,27 +183,6 @@ const comic = await payload.findByID({
   collection: 'comics',
   id: comicId,
   depth: 1
-})
-
-if (!comic) {
-  return NextResponse.json(
-    { error: 'Comic not found' },
-    { status: 404, headers: getCorsHeaders() }
-  )
-}
-```
-
-#### Create `/api/comic-chapters/[comicId]/route.ts`:
-
-Copy from `uuids-layer` branch, rename parameter from `[uuid]` to `[comicId]`, and modify:
-   - Change parameter from `uuid` to `comicId`
-   - Remove lines 29-48 (UUID lookup)
-   - Use direct ID lookup:
-```typescript
-const comic = await payload.findByID({
-  collection: 'comics',
-  id: comicId,
-  depth: 0
 })
 
 if (!comic) {
@@ -279,10 +258,11 @@ After implementation:
 - [ ] Can delete records
 - [ ] Authentication works (login/logout)
 - [ ] Media upload works
-- [ ] Custom aggregation endpoints work:
-  - [ ] `/api/comic-with-chapters/:id`
-  - [ ] `/api/comic-chapters/:id`
-  - [ ] `/api/reorder-chapters` (POST)
+- [ ] Custom endpoints work:
+  - [ ] `/api/comic-with-chapters/:id` (aggregation)
+  - [ ] `/api/reorder-chapters` (POST with authorization)
+- [ ] Native filtered queries work:
+  - [ ] `/api/chapters?where[comic][equals]=123&sort=order`
 - [ ] Build succeeds without TypeScript errors
 - [ ] Deployment to Cloudflare Workers succeeds
 - [ ] Remote site functions correctly
@@ -301,6 +281,9 @@ If issues arise:
 
 ## Notes
 
-- The three kept endpoints (`comic-with-chapters`, `comic-chapters`, `reorder-chapters`) provide legitimate performance and functionality benefits unrelated to UUID hiding
+- The two kept endpoints (`comic-with-chapters`, `reorder-chapters`) provide legitimate performance and functionality benefits unrelated to UUID hiding:
+  - `comic-with-chapters`: Data aggregation reduces multiple API calls to one
+  - `reorder-chapters`: Custom authorization and atomic updates
+- The `comic-chapters` endpoint was NOT created because native filtered queries (`/api/chapters?where[comic][equals]=123&sort=order`) provide the same functionality with more flexibility
 - Integer IDs will be exposed on the frontend, but this is acceptable for this use case
 - This change simplifies the codebase significantly and removes the frontend overhead of tracking both ID types
