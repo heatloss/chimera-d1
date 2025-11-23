@@ -1,0 +1,103 @@
+[
+  {
+    "results": [
+      {
+        "id": 1,
+        "uuid": "10855388-3837-407d-a31d-64e2a1892802",
+        "comic_id": 1,
+        "title": "Chapter 1",
+        "order": 1,
+        "description": null,
+        "seo_meta_slug": "chapter-1",
+        "seo_meta_meta_title": null,
+        "seo_meta_meta_description": null,
+        "stats_page_count": 0,
+        "stats_first_page_number": null,
+        "stats_last_page_number": null,
+        "updated_at": "2025-10-15T20:25:51.475Z",
+        "created_at": "2025-10-15T20:25:51.475Z"
+      },
+      {
+        "id": 2,
+        "uuid": "7d68b6d2-de08-43e9-93b6-30fa883e9d5d",
+        "comic_id": 1,
+        "title": "Chapter 2",
+        "order": 2,
+        "description": null,
+        "seo_meta_slug": "chapter-2",
+        "seo_meta_meta_title": null,
+        "seo_meta_meta_description": null,
+        "stats_page_count": 0,
+        "stats_first_page_number": null,
+        "stats_last_page_number": null,
+        "updated_at": "2025-10-15T20:25:51.534Z",
+        "created_at": "2025-10-15T20:25:51.534Z"
+      },
+      {
+        "id": 3,
+        "uuid": "e6797172-0b2c-4f2c-89f0-a5e4ec1889dd",
+        "comic_id": 1,
+        "title": "Chapter 3",
+        "order": 3,
+        "description": null,
+        "seo_meta_slug": "chapter-3",
+        "seo_meta_meta_title": null,
+        "seo_meta_meta_description": null,
+        "stats_page_count": 0,
+        "stats_first_page_number": null,
+        "stats_last_page_number": null,
+        "updated_at": "2025-10-15T20:25:51.585Z",
+        "created_at": "2025-10-15T20:25:51.585Z"
+      },
+      {
+        "id": 4,
+        "uuid": "23a1006f-1195-4140-857d-c42d2a5a977e",
+        "comic_id": 1,
+        "title": "Chapter 4",
+        "order": 4,
+        "description": "",
+        "seo_meta_slug": "chapter-4-which-i-will-later-rename",
+        "seo_meta_meta_title": null,
+        "seo_meta_meta_description": null,
+        "stats_page_count": 0,
+        "stats_first_page_number": null,
+        "stats_last_page_number": null,
+        "updated_at": "2025-10-15T20:25:51.641Z",
+        "created_at": "2025-10-15T20:25:51.641Z"
+      },
+      {
+        "id": 5,
+        "uuid": "641cccc1-1f52-41c5-b8fd-640eff045b7b",
+        "comic_id": 1,
+        "title": "Chapter 5",
+        "order": 5,
+        "description": "",
+        "seo_meta_slug": "chapter-5",
+        "seo_meta_meta_title": null,
+        "seo_meta_meta_description": null,
+        "stats_page_count": 0,
+        "stats_first_page_number": null,
+        "stats_last_page_number": null,
+        "updated_at": "2025-10-15T20:25:51.692Z",
+        "created_at": "2025-10-15T20:25:51.692Z"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "ENAM",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.403
+      },
+      "duration": 0.403,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 454656,
+      "rows_read": 5,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

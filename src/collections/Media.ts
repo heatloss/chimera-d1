@@ -215,6 +215,33 @@ export const Media: CollectionConfig = {
         return data
       },
     ],
+    afterRead: [
+      async ({ doc }) => {
+        // Populate thumbnailURL from the first thumbnail in imageSizes
+        if (doc.imageSizes && Array.isArray(doc.imageSizes) && doc.imageSizes.length > 0) {
+          // Use the first thumbnail (usually named "thumbnail")
+          const firstThumbnail = doc.imageSizes[0]
+          if (firstThumbnail?.url) {
+            // URL-encode the thumbnail URL to match the encoding of the main url field
+            const urlPath = firstThumbnail.url.split('/').pop() || ''
+            const encodedPath = encodeURIComponent(urlPath)
+            const baseUrl = firstThumbnail.url.substring(0, firstThumbnail.url.lastIndexOf('/') + 1)
+            doc.thumbnailURL = baseUrl + encodedPath
+
+            // Also update width/height to match the thumbnail dimensions (not original image)
+            // Store original dimensions as backup
+            if (!doc.originalWidth) {
+              doc.originalWidth = doc.width
+              doc.originalHeight = doc.height
+            }
+            // Set width/height to thumbnail dimensions for consistency with thumbnailURL
+            doc.width = firstThumbnail.width
+            doc.height = firstThumbnail.height
+          }
+        }
+        return doc
+      },
+    ],
   },
   timestamps: true,
 }

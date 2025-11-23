@@ -1,0 +1,43 @@
+[
+  {
+    "results": [
+      {
+        "id": 1,
+        "uuid": "cec38490-d12b-4653-9ef4-8b0d3d761a99",
+        "title": "The Automan's Daughter",
+        "slug": "automans-daughter",
+        "description": "An adventure story set in an alternate-historical dieselpunk world, The Automan's Daughter follows military-school dropout Aisha Osman and her industrialist uncle Siddig as they outwit bikers, spies and kidnappers while gearing up for a tournament showdown with the formidable Widowmaker mecha.",
+        "author_id": 1,
+        "cover_image_id": null,
+        "status": "hiatus",
+        "publish_schedule": "irregular",
+        "is_n_s_f_w": 0,
+        "seo_meta_meta_title": null,
+        "seo_meta_meta_description": null,
+        "seo_meta_social_image_id": null,
+        "stats_total_pages": 27,
+        "stats_total_chapters": 5,
+        "stats_last_page_published": "2025-09-28T10:16:00.000Z",
+        "updated_at": "2025-10-15T20:25:53.906Z",
+        "created_at": "2025-10-15T20:25:51.457Z"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "ENAM",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.4532
+      },
+      "duration": 0.4532,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 454656,
+      "rows_read": 1,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]
