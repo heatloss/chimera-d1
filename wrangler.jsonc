@@ -42,6 +42,13 @@
     // },
   ],
 
+  "routes": [
+    {
+      "pattern": "api.chimeracomics.org/*",
+      "custom_domain": true,
+    },
+  ],
+
   "observability": {
     "logs": {
       "enabled": true,
