@@ -19,16 +19,21 @@ echo ""
 echo "📋 Exporting schema..."
 pnpm wrangler d1 execute chimera-d1 --local --command "SELECT sql FROM sqlite_master WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY type DESC, name;" --json > "${SCHEMA_FILE}"
 
-# Export table counts
+# Export table counts (split into separate queries to avoid SQLite UNION limit)
 echo "📊 Exporting table counts..."
-pnpm wrangler d1 execute chimera-d1 --local --command "
-SELECT 'users' as table_name, COUNT(*) as count FROM users
-UNION ALL SELECT 'comics', COUNT(*) FROM comics
-UNION ALL SELECT 'chapters', COUNT(*) FROM chapters
-UNION ALL SELECT 'pages', COUNT(*) FROM pages
-UNION ALL SELECT 'media', COUNT(*) FROM media
-UNION ALL SELECT 'payload_migrations', COUNT(*) FROM payload_migrations;
-" --json > "${DATA_FILE}"
+echo "[" > "${DATA_FILE}"
+pnpm wrangler d1 execute chimera-d1 --local --command "SELECT 'users' as table_name, COUNT(*) as count FROM users;" --json >> "${DATA_FILE}"
+echo "," >> "${DATA_FILE}"
+pnpm wrangler d1 execute chimera-d1 --local --command "SELECT 'comics' as table_name, COUNT(*) as count FROM comics;" --json >> "${DATA_FILE}"
+echo "," >> "${DATA_FILE}"
+pnpm wrangler d1 execute chimera-d1 --local --command "SELECT 'chapters' as table_name, COUNT(*) as count FROM chapters;" --json >> "${DATA_FILE}"
+echo "," >> "${DATA_FILE}"
+pnpm wrangler d1 execute chimera-d1 --local --command "SELECT 'pages' as table_name, COUNT(*) as count FROM pages;" --json >> "${DATA_FILE}"
+echo "," >> "${DATA_FILE}"
+pnpm wrangler d1 execute chimera-d1 --local --command "SELECT 'media' as table_name, COUNT(*) as count FROM media;" --json >> "${DATA_FILE}"
+echo "," >> "${DATA_FILE}"
+pnpm wrangler d1 execute chimera-d1 --local --command "SELECT 'payload_migrations' as table_name, COUNT(*) as count FROM payload_migrations;" --json >> "${DATA_FILE}"
+echo "]" >> "${DATA_FILE}"
 
 # Create combined documentation
 cat > "${COMBINED_FILE}" << EOF
@@ -53,14 +58,7 @@ TABLE COUNTS
 EOF
 
 # Add table counts
-pnpm wrangler d1 execute chimera-d1 --local --command "
-SELECT 'users' as table_name, COUNT(*) as count FROM users
-UNION ALL SELECT 'comics', COUNT(*) FROM comics
-UNION ALL SELECT 'chapters', COUNT(*) FROM chapters
-UNION ALL SELECT 'pages', COUNT(*) FROM pages
-UNION ALL SELECT 'media', COUNT(*) FROM media
-UNION ALL SELECT 'payload_migrations', COUNT(*) FROM payload_migrations;
-" --json >> "${COMBINED_FILE}"
+pnpm wrangler d1 execute chimera-d1 --local --command "SELECT name as table_name, (SELECT COUNT(*) FROM users) as users_count, (SELECT COUNT(*) FROM comics) as comics_count, (SELECT COUNT(*) FROM chapters) as chapters_count, (SELECT COUNT(*) FROM pages) as pages_count, (SELECT COUNT(*) FROM media) as media_count FROM sqlite_master WHERE name='users' LIMIT 1;" --json >> "${COMBINED_FILE}"
 
 cat >> "${COMBINED_FILE}" << EOF
 

@@ -1,0 +1,850 @@
+===================================================================
+Database Backup: chimera-d1
+Timestamp: 20251123-095648
+===================================================================
+
+SCHEMA INFORMATION
+==================
+
+[
+  {
+    "results": [
+      {
+        "name": "_cf_METADATA",
+        "type": "table"
+      },
+      {
+        "name": "chapters",
+        "type": "table"
+      },
+      {
+        "name": "comics",
+        "type": "table"
+      },
+      {
+        "name": "comics_credits",
+        "type": "table"
+      },
+      {
+        "name": "comics_genres",
+        "type": "table"
+      },
+      {
+        "name": "comics_texts",
+        "type": "table"
+      },
+      {
+        "name": "media",
+        "type": "table"
+      },
+      {
+        "name": "pages",
+        "type": "table"
+      },
+      {
+        "name": "pages_page_extra_images",
+        "type": "table"
+      },
+      {
+        "name": "payload_kv",
+        "type": "table"
+      },
+      {
+        "name": "payload_locked_documents",
+        "type": "table"
+      },
+      {
+        "name": "payload_locked_documents_rels",
+        "type": "table"
+      },
+      {
+        "name": "payload_migrations",
+        "type": "table"
+      },
+      {
+        "name": "payload_preferences",
+        "type": "table"
+      },
+      {
+        "name": "payload_preferences_rels",
+        "type": "table"
+      },
+      {
+        "name": "users",
+        "type": "table"
+      },
+      {
+        "name": "users_sessions",
+        "type": "table"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 0
+    }
+  }
+]
+
+TABLE COUNTS
+============
+
+[
+  {
+    "results": [
+      {
+        "table_name": "users",
+        "users_count": 2,
+        "comics_count": 1,
+        "chapters_count": 5,
+        "pages_count": 29,
+        "media_count": 42
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 1
+    }
+  }
+]
+
+USERS TABLE SCHEMA
+==================
+
+[
+  {
+    "results": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "role",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'creator'",
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "email",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "reset_password_token",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "reset_password_expiration",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "salt",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "hash",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "login_attempts",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "lock_until",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 0
+    }
+  }
+]
+
+COMICS TABLE SCHEMA
+===================
+
+[
+  {
+    "results": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "title",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "slug",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "author_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "cover_image_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'draft'",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "publish_schedule",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'irregular'",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "is_n_s_f_w",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "false",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "seo_meta_meta_title",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "seo_meta_meta_description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "seo_meta_social_image_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "stats_total_pages",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 13,
+        "name": "stats_total_chapters",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 14,
+        "name": "stats_last_page_published",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 15,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "pk": 0
+      },
+      {
+        "cid": 16,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "pk": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 0
+    }
+  }
+]
+
+CHAPTERS TABLE SCHEMA
+=====================
+
+[
+  {
+    "results": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "comic_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "title",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "order",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "seo_meta_slug",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "seo_meta_meta_title",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "seo_meta_meta_description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "stats_page_count",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "stats_first_page_number",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "stats_last_page_number",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "pk": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 0
+    }
+  }
+]
+
+PAGES TABLE SCHEMA
+==================
+
+[
+  {
+    "results": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "comic_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "chapter_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "chapter_page_number",
+        "type": "numeric",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "global_page_number",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "title",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "display_title",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "page_image_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "thumbnail_image_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "alt_text",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "author_notes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'draft'",
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "published_date",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 13,
+        "name": "navigation_previous_page_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 14,
+        "name": "navigation_next_page_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 15,
+        "name": "navigation_is_first_page",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "false",
+        "pk": 0
+      },
+      {
+        "cid": 16,
+        "name": "navigation_is_last_page",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "false",
+        "pk": 0
+      },
+      {
+        "cid": 17,
+        "name": "seo_meta_slug",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 18,
+        "name": "seo_meta_meta_title",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 19,
+        "name": "seo_meta_meta_description",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 20,
+        "name": "stats_view_count",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 21,
+        "name": "stats_first_viewed",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 22,
+        "name": "stats_last_viewed",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 23,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "pk": 0
+      },
+      {
+        "cid": 24,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "pk": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 0
+    }
+  }
+]
+
+MEDIA TABLE SCHEMA
+==================
+
+[
+  {
+    "results": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "null",
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "alt",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "caption",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "image_sizes",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "media_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'general'",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "uploaded_by_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "is_public",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "true",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "comic_meta_related_comic_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "comic_meta_is_n_s_f_w",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "false",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "url",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "thumbnail_u_r_l",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 13,
+        "name": "filename",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 14,
+        "name": "mime_type",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 15,
+        "name": "filesize",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 16,
+        "name": "width",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      },
+      {
+        "cid": 17,
+        "name": "height",
+        "type": "numeric",
+        "notnull": 0,
+        "dflt_value": "null",
+        "pk": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 0
+    }
+  }
+]
