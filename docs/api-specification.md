@@ -154,6 +154,7 @@ Individual comic page management.
 - `GET /api/pages/:id` - Get specific page
 - `PATCH /api/pages/:id` - Update page
 - `DELETE /api/pages/:id` - Delete page (admin only)
+- `GET /api/pages-by-comic/:comicId` - **Workaround endpoint** (see Known Issues)
 
 #### Query Parameters
 
@@ -203,6 +204,7 @@ Organizational containers for comic pages, grouped by story arcs or sections.
 - `PATCH /api/chapters/:id` - Update chapter
 - `DELETE /api/chapters/:id` - Delete chapter (admin only)
 - `POST /api/reorder-chapters` - Reorder chapters (see Custom Endpoints)
+- `GET /api/chapters-by-comic/:comicId` - **Workaround endpoint** (see Known Issues)
 
 #### Data Structure
 
@@ -674,6 +676,80 @@ Chimera CMS uses a dual numbering system for comic pages:
 - **API**: https://chimera-d1.mike-17c.workers.dev
 - **Admin Panel**: https://chimera-d1.mike-17c.workers.dev/admin
 
+## Known Issues
+
+### Payload REST API `where` Clause Bug (November 2024)
+
+**Issue**: Payload CMS v3.64.0's REST API handler has a bug where `where` clause queries on relationship fields hang indefinitely and never return.
+
+**Affected Endpoints**:
+- `GET /api/chapters?where[comic][equals]=1` - ❌ Hangs
+- `GET /api/pages?where[comic][equals]=1` - ❌ Hangs
+
+**Root Cause**: Bug in `@payloadcms/next` package's REST_GET query parameter parser. Payload's core query engine works correctly (verified via direct `payload.find()` calls).
+
+**Workaround Endpoints**:
+
+Two custom endpoints bypass the broken REST parser:
+
+#### Get Chapters by Comic ID
+```javascript
+GET /api/chapters-by-comic/:comicId
+
+// Example
+GET /api/chapters-by-comic/1
+
+// Response - Same format as standard /api/chapters
+{
+  "docs": [
+    {
+      "id": 1,
+      "comic": { /* populated comic data */ },
+      "title": "Chapter 1",
+      "order": 1,
+      // ... all chapter fields with relationships populated
+    }
+  ],
+  "totalDocs": 5,
+  "limit": 100,
+  "page": 1,
+  "totalPages": 1
+}
+```
+
+#### Get Pages by Comic ID
+```javascript
+GET /api/pages-by-comic/:comicId?limit=20&page=1
+
+// Query parameters (optional):
+// - limit: Number of pages to return (default: 100)
+// - page: Page number for pagination (default: 1)
+
+// Example
+GET /api/pages-by-comic/1?limit=10&page=2
+
+// Response - Same format as standard /api/pages
+{
+  "docs": [
+    {
+      "id": 15,
+      "comic": { /* populated comic data */ },
+      "chapter": { /* populated chapter data */ },
+      "globalPageNumber": 15,
+      // ... all page fields with relationships populated
+    }
+  ],
+  "totalDocs": 29,
+  "limit": 10,
+  "page": 2,
+  "totalPages": 3
+}
+```
+
+**Status**: Workaround endpoints are production-ready. Once Payload fixes the bug in a future release, these endpoints can be removed in favor of the standard REST API queries.
+
+**Testing**: Direct Payload API calls work correctly (`payload.find()` with where clauses completes in ~20ms). Only the HTTP REST API layer is affected.
+
 ## Migration Notes
 
 This API specification reflects the November 2024 update where:
@@ -681,5 +757,6 @@ This API specification reflects the November 2024 update where:
 - Integer IDs restored as primary identifiers
 - Two thumbnail sizes (400px, 800px) instead of seven
 - Simplified authentication and endpoint structure
+- Workaround endpoints added for Payload REST API bug
 
 For historical context, see `MIGRATION_PROGRESS.md`.
