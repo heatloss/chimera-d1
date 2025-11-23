@@ -678,19 +678,33 @@ Chimera CMS uses a dual numbering system for comic pages:
 
 ## Known Issues
 
-### Payload REST API `where` Clause Bug (November 2024)
+### Payload REST API `where` Clause - RESOLVED (November 2024)
 
-**Issue**: Payload CMS v3.64.0's REST API handler has a bug where `where` clause queries on relationship fields hang indefinitely and never return.
+**Previous Issue**: Payload CMS v3.64.0's REST API handler had a bug where `where` clause queries on relationship fields would hang indefinitely.
 
-**Affected Endpoints**:
-- `GET /api/chapters?where[comic][equals]=1` - ❌ Hangs
-- `GET /api/pages?where[comic][equals]=1` - ❌ Hangs
+**Status**: ✅ **RESOLVED** - The standard Payload endpoints with where clauses are now working correctly for browser/frontend requests:
+- `GET /api/chapters?where[comic][equals]=1` - ✅ Works in browsers
+- `GET /api/pages?where[comic][equals]=1` - ✅ Works in browsers
 
-**Root Cause**: Bug in `@payloadcms/next` package's REST_GET query parameter parser. Payload's core query engine works correctly (verified via direct `payload.find()` calls).
+**Verified Working Example**:
+```javascript
+// This works correctly in browsers and frontend applications
+GET /api/pages?where[comic][equals]=1&populate=pageImage&sort=-globalPageNumber&limit=5
 
-**Workaround Endpoints**:
+// Response includes properly filtered and populated data
+{
+  "docs": [ /* filtered pages for comic ID 1 */ ],
+  "totalDocs": 29,
+  "limit": 5,
+  // ... standard Payload pagination response
+}
+```
 
-Two custom endpoints bypass the broken REST parser:
+**Note**: The issue appears to have been resolved after a fresh `node_modules` installation. The endpoints work correctly when accessed from browsers and frontend applications with proper headers (including Authorization tokens where needed).
+
+**Backup Endpoints Available**:
+
+Two custom endpoints are maintained as backups and alternatives:
 
 #### Get Chapters by Comic ID
 ```javascript
@@ -698,57 +712,17 @@ GET /api/chapters-by-comic/:comicId
 
 // Example
 GET /api/chapters-by-comic/1
-
-// Response - Same format as standard /api/chapters
-{
-  "docs": [
-    {
-      "id": 1,
-      "comic": { /* populated comic data */ },
-      "title": "Chapter 1",
-      "order": 1,
-      // ... all chapter fields with relationships populated
-    }
-  ],
-  "totalDocs": 5,
-  "limit": 100,
-  "page": 1,
-  "totalPages": 1
-}
 ```
 
 #### Get Pages by Comic ID
 ```javascript
 GET /api/pages-by-comic/:comicId?limit=20&page=1
 
-// Query parameters (optional):
-// - limit: Number of pages to return (default: 100)
-// - page: Page number for pagination (default: 1)
-
 // Example
 GET /api/pages-by-comic/1?limit=10&page=2
-
-// Response - Same format as standard /api/pages
-{
-  "docs": [
-    {
-      "id": 15,
-      "comic": { /* populated comic data */ },
-      "chapter": { /* populated chapter data */ },
-      "globalPageNumber": 15,
-      // ... all page fields with relationships populated
-    }
-  ],
-  "totalDocs": 29,
-  "limit": 10,
-  "page": 2,
-  "totalPages": 3
-}
 ```
 
-**Status**: Workaround endpoints are production-ready. Once Payload fixes the bug in a future release, these endpoints can be removed in favor of the standard REST API queries.
-
-**Testing**: Direct Payload API calls work correctly (`payload.find()` with where clauses completes in ~20ms). Only the HTTP REST API layer is affected.
+These backup endpoints provide the same functionality and can be used if any where clause issues resurface in future Payload updates.
 
 ## Migration Notes
 

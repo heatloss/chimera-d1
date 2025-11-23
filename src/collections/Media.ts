@@ -227,18 +227,10 @@ export const Media: CollectionConfig = {
             const encodedPath = encodeURIComponent(urlPath)
             const baseUrl = firstThumbnail.url.substring(0, firstThumbnail.url.lastIndexOf('/') + 1)
             doc.thumbnailURL = baseUrl + encodedPath
-
-            // Also update width/height to match the thumbnail dimensions (not original image)
-            // Store original dimensions as backup
-            if (!doc.originalWidth) {
-              doc.originalWidth = doc.width
-              doc.originalHeight = doc.height
-            }
-            // Set width/height to thumbnail dimensions for consistency with thumbnailURL
-            doc.width = firstThumbnail.width
-            doc.height = firstThumbnail.height
           }
         }
+        // Leave width/height as original image dimensions (matches doc.url)
+        // Thumbnail dimensions are available in doc.imageSizes array
         return doc
       },
     ],
