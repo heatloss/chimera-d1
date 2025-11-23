@@ -60,11 +60,6 @@ export default buildConfig({
   // database-adapter-config-start
   db: sqliteD1Adapter({
     binding: cloudflare.env.D1,
-    // WORKAROUND: Configure for manual UUID handling
-    // See WORKAROUND-UUID.md for full explanation
-    // @ts-expect-error - Runtime supports 'text' but types don't include it yet
-    idType: 'text', // Use TEXT columns for IDs instead of INTEGER
-    allowIDOnCreate: true, // Allow passing custom IDs to payload.create()
   }),
   // database-adapter-config-end
   plugins: [

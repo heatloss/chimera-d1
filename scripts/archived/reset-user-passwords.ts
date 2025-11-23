@@ -6,7 +6,7 @@
 
 import 'dotenv/config'
 import { getPayload } from 'payload'
-import config from '../src/payload.config'
+import config from '../../src/payload.config'
 
 async function main() {
   console.log('🔐 Resetting user passwords...\n')

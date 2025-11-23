@@ -4,6 +4,7 @@
 Migration from chimera-cms (PostgreSQL + local storage) to chimera-d1 (Cloudflare D1 + R2) using Payload CMS v3.
 
 **Status**: ✅ Successfully deployed to production and fully operational!
+**Latest Update**: November 2024 - Removed UUID fields, restored to integer-only IDs
 
 ---
 
@@ -16,12 +17,12 @@ Migration from chimera-cms (PostgreSQL + local storage) to chimera-d1 (Cloudflar
 - ✅ Created 60 indexes for performance optimization
 
 **Collections Created**:
-- `comics` - Main comic series information
-- `chapters` - Chapter organization within comics
-- `pages` - Individual comic pages with navigation
-- `media` - Image files with thumbnail variants
+- `comics` - Main comic series information (integer IDs)
+- `chapters` - Chapter organization within comics (integer IDs)
+- `pages` - Individual comic pages with navigation (integer IDs)
+- `media` - Image files with thumbnail variants (integer IDs)
 - `comics_credits` - Creator credits (writer, artist, colorist, etc.)
-- `users` - Authentication and authorization
+- `users` - Authentication and authorization (integer IDs)
 - Payload system tables (migrations, preferences, locked documents, sessions)
 
 ### 2. Local Development Environment
@@ -114,7 +115,7 @@ Tested all core APIs with remote D1:
 - `/tmp/data-no-transaction.sql` - 82 lines, content data
 
 ### Schema Differences from Chimera-CMS
-- Added `uuid` column to all main tables (comics, chapters, pages, media)
+- Uses integer primary keys for all main tables (comics, chapters, pages, media, users)
 - Maintained normalized relationships using foreign keys (consistent with PostgreSQL approach)
 - Added navigation fields to pages (previous_page_id, next_page_id, is_first_page, is_last_page)
 - Kept credits in junction table structure
@@ -196,10 +197,11 @@ sqlite3 <db_path> ".dump" | grep "INSERT" | grep -v "_cf_METADATA" | grep -v "IN
 ## Pending Tasks
 
 ### API Enhancements
-- [ ] Implement frontend-friendly API endpoints:
-  - `/api/media/uuid/:uuid` - Get media by UUID
+- [x] Implemented custom API endpoints:
+  - `/api/comic-with-chapters/:id` - Get comic with all chapters and pages
+  - `/api/reorder-chapters` - Reorder chapters with authorization
+- [ ] Additional endpoints to consider:
   - `/api/comics/slug/:slug` - Get comic by slug
-  - `/api/pages/uuid/:uuid` - Get page by UUID
   - `/api/chapters/:chapterId/pages` - Get all pages in chapter
 
 ### Documentation
@@ -217,7 +219,23 @@ sqlite3 <db_path> ".dump" | grep "INSERT" | grep -v "_cf_METADATA" | grep -v "IN
 
 ---
 
-## Recent Updates (2025-11-14)
+## Recent Updates
+
+### November 2024 - UUID Removal & Simplification
+- ✅ **Removed UUID fields** from all collections (Users, Media, Comics, Chapters, Pages)
+- ✅ **Restored integer-only IDs** throughout the system
+- ✅ **Added custom API endpoints**: `/api/comic-with-chapters/:id` and `/api/reorder-chapters`
+- ✅ **Generated database migration** to drop UUID columns and indexes
+- ✅ **Build tested** and verified working with integer IDs
+- ✅ **Simplified codebase** - removed UUID detection logic and UUID-based endpoints
+
+**Rationale**: UUIDs were originally attempted to solve a perceived security issue with sequential IDs in the admin CMS. After extensive testing, we determined that:
+1. Sequential IDs in a private admin CMS are not a security risk (authentication/authorization provide the security)
+2. UUID primary keys in Cloudflare Workers have bugs that cause POST operations to fail
+3. The hybrid approach (integer PKs + UUID fields) added unnecessary complexity
+4. Public-facing site (future) can use UUID or slug-based URLs independently of CMS IDs
+
+### November 2024 - Previous Updates
 
 ### Thumbnail Optimization
 - ✅ Reduced thumbnail sizes from 7 to 2 (71% reduction)
@@ -271,7 +289,7 @@ All issues have been resolved. The CMS is fully operational in production.
 
 - ✅ 100% data migrated (all comics, chapters, pages, media)
 - ✅ 100% relationships preserved (foreign keys working)
-- ✅ 100% UUIDs preserved (for frontend compatibility)
+- ✅ Simplified to integer-only IDs (UUIDs removed)
 - ✅ 294 thumbnails generated and uploaded
 - ✅ Local and remote environments tested
 - ✅ API response times acceptable (< 2s for complex queries)
@@ -287,13 +305,15 @@ All issues have been resolved. The CMS is fully operational in production.
 - [Drizzle ORM Docs](https://orm.drizzle.team/)
 
 ### Repository
-- Branch: `wasm-thumbnails` (current)
+- Branch: `uuid-phaseout` (current)
 - Main branch: `main`
 
 ---
 
-**Last Updated**: 2025-10-17
-**Status**: ✅ Production deployment successful and operational
+**Last Updated**: November 2024
+**Status**: ✅ Production deployment successful and operational (pending migration application)
 
 **Production URL**: https://chimera-d1.mike-17c.workers.dev
 **Admin Interface**: https://chimera-d1.mike-17c.workers.dev/admin
+
+**Note**: The UUID removal migration (`20251122_165441.ts`) needs to be applied to production database when ready.

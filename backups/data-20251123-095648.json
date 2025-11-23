@@ -1,0 +1,91 @@
+[
+[
+  {
+    "results": [
+      {
+        "table_name": "users",
+        "count": 2
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 0
+    }
+  }
+]
+,
+[
+  {
+    "results": [
+      {
+        "table_name": "comics",
+        "count": 1
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 0
+    }
+  }
+]
+,
+[
+  {
+    "results": [
+      {
+        "table_name": "chapters",
+        "count": 5
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 0
+    }
+  }
+]
+,
+[
+  {
+    "results": [
+      {
+        "table_name": "pages",
+        "count": 29
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 1
+    }
+  }
+]
+,
+[
+  {
+    "results": [
+      {
+        "table_name": "media",
+        "count": 42
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 1
+    }
+  }
+]
+,
+[
+  {
+    "results": [
+      {
+        "table_name": "payload_migrations",
+        "count": 3
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 1
+    }
+  }
+]
+]

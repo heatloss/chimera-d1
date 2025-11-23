@@ -12,7 +12,7 @@ This directory contains scripts for migrating data from chimera-cms to chimera-d
 
 ### 1. migrate-from-chimera-cms.ts
 
-Imports all data from the old chimera-cms database (SQLite with TEXT primary keys) into the new chimera-d1 database (D1 with INTEGER primary keys + UUID fields).
+Imports all data from the old chimera-cms database (SQLite with TEXT primary keys) into the new chimera-d1 database (D1 with INTEGER primary keys).
 
 **What it migrates:**
 - Users (with auth credentials)
@@ -23,7 +23,7 @@ Imports all data from the old chimera-cms database (SQLite with TEXT primary key
 
 **What it does NOT migrate:**
 - Old thumbnail data (will be regenerated with new script)
-- Old TEXT-based IDs (generates new UUIDs)
+- Old TEXT-based IDs (generates new integer IDs)
 
 **Usage:**
 
@@ -125,12 +125,12 @@ Expected output:
 
 👤 Migrating Users...
    Found 2 users
-   ✓ mike@the-ottoman.com (61104b13-126a-4e8d-bc90-d7dcde4fb576 → 1)
-   ✓ mike@luckbat.com (1938543a-1ac5-47ec-a422-0cafa96de497 → 2)
+   ✓ mike@the-ottoman.com (old-text-id → 1)
+   ✓ mike@luckbat.com (old-text-id → 2)
 
 📚 Migrating Comics...
    Found 1 comics
-   ✓ The Automan's Daughter (c8410e79-a8e3-4fba-aefe-63fce4c2c35e → 1)
+   ✓ The Automan's Daughter (old-text-id → 1)
 
 ... (continues for all collections)
 

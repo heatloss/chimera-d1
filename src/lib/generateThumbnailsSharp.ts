@@ -35,9 +35,11 @@ export async function generateThumbnailsSharp(
         })
       }
 
-      // Get metadata and buffer
-      const metadata = await pipeline.metadata()
+      // Get resized buffer first
       const buffer = await pipeline.toBuffer()
+
+      // Get metadata from the resized buffer (not the original)
+      const resizedMetadata = await sharp(buffer).metadata()
 
       // Generate filename for this size
       const ext = filename.split('.').pop() || 'jpg'
@@ -46,8 +48,8 @@ export async function generateThumbnailsSharp(
 
       thumbnails.push({
         name: size.name,
-        width: metadata.width || size.width,
-        height: metadata.height || size.height || size.width,
+        width: resizedMetadata.width || size.width,
+        height: resizedMetadata.height || size.height || size.width,
         url: `/api/media/thumbnail/${thumbnailFilename}`, // Served via custom thumbnail route
         mimeType,
         filesize: buffer.length,
@@ -55,7 +57,7 @@ export async function generateThumbnailsSharp(
         filename: thumbnailFilename,
       })
 
-      console.log(`  ✓ ${size.name}: ${metadata.width}x${metadata.height} (${buffer.length} bytes)`)
+      console.log(`  ✓ ${size.name}: ${resizedMetadata.width}x${resizedMetadata.height} (${buffer.length} bytes)`)
     } catch (error) {
       console.error(`  ✗ Failed to generate ${size.name}:`, error)
     }

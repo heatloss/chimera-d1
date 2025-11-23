@@ -43,27 +43,6 @@ export const Media: CollectionConfig = {
     focalPoint: false,
   },
   fields: [
-    // HYBRID UUID APPROACH: Keep INTEGER primary key, add UUID as regular field
-    {
-      name: 'uuid',
-      type: 'text',
-      label: 'Public ID',
-      required: true,
-      unique: true,
-      admin: {
-        readOnly: true,
-        position: 'sidebar',
-        description: 'Unique public identifier for this media item',
-      },
-      hooks: {
-        beforeValidate: [
-          ({ value }) => {
-            // Auto-generate UUID if not provided
-            return value || crypto.randomUUID()
-          }
-        ]
-      }
-    },
     {
       name: 'alt',
       type: 'text',
@@ -234,6 +213,25 @@ export const Media: CollectionConfig = {
         }
 
         return data
+      },
+    ],
+    afterRead: [
+      async ({ doc }) => {
+        // Populate thumbnailURL from the first thumbnail in imageSizes
+        if (doc.imageSizes && Array.isArray(doc.imageSizes) && doc.imageSizes.length > 0) {
+          // Use the first thumbnail (usually named "thumbnail")
+          const firstThumbnail = doc.imageSizes[0]
+          if (firstThumbnail?.url) {
+            // URL-encode the thumbnail URL to match the encoding of the main url field
+            const urlPath = firstThumbnail.url.split('/').pop() || ''
+            const encodedPath = encodeURIComponent(urlPath)
+            const baseUrl = firstThumbnail.url.substring(0, firstThumbnail.url.lastIndexOf('/') + 1)
+            doc.thumbnailURL = baseUrl + encodedPath
+          }
+        }
+        // Leave width/height as original image dimensions (matches doc.url)
+        // Thumbnail dimensions are available in doc.imageSizes array
+        return doc
       },
     ],
   },

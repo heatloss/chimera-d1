@@ -72,6 +72,7 @@ export interface Config {
     chapters: Chapter;
     pages: Page;
     media: Media;
+    'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -83,6 +84,7 @@ export interface Config {
     chapters: ChaptersSelect<false> | ChaptersSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
+    'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -126,10 +128,6 @@ export interface UserAuthOperations {
 export interface User {
   id: number;
   /**
-   * Unique public identifier for this user
-   */
-  uuid: string;
-  /**
    * User role for access control
    */
   role: 'admin' | 'editor' | 'creator' | 'reader';
@@ -157,10 +155,6 @@ export interface User {
  */
 export interface Comic {
   id: number;
-  /**
-   * Unique public identifier for this comic
-   */
-  uuid: string;
   /**
    * The name of your webcomic series
    */
@@ -269,10 +263,6 @@ export interface Comic {
 export interface Media {
   id: number;
   /**
-   * Unique public identifier for this media item
-   */
-  uuid: string;
-  /**
    * Optional alt text (for webcomics, alt text is usually set on the page)
    */
   alt?: string | null;
@@ -326,10 +316,6 @@ export interface Media {
  */
 export interface Chapter {
   id: number;
-  /**
-   * Unique public identifier for this chapter
-   */
-  uuid: string;
   /**
    * Which comic series this chapter belongs to
    */
@@ -385,10 +371,6 @@ export interface Chapter {
  */
 export interface Page {
   id: number;
-  /**
-   * Unique public identifier for this page
-   */
-  uuid: string;
   /**
    * Which comic series this page belongs to
    */
@@ -489,6 +471,23 @@ export interface Page {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-kv".
+ */
+export interface PayloadKv {
+  id: number;
+  key: string;
+  data:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents".
  */
 export interface PayloadLockedDocument {
@@ -561,7 +560,6 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
-  uuid?: T;
   role?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -585,7 +583,6 @@ export interface UsersSelect<T extends boolean = true> {
  * via the `definition` "comics_select".
  */
 export interface ComicsSelect<T extends boolean = true> {
-  uuid?: T;
   title?: T;
   slug?: T;
   description?: T;
@@ -627,7 +624,6 @@ export interface ComicsSelect<T extends boolean = true> {
  * via the `definition` "chapters_select".
  */
 export interface ChaptersSelect<T extends boolean = true> {
-  uuid?: T;
   comic?: T;
   title?: T;
   order?: T;
@@ -654,7 +650,6 @@ export interface ChaptersSelect<T extends boolean = true> {
  * via the `definition` "pages_select".
  */
 export interface PagesSelect<T extends boolean = true> {
-  uuid?: T;
   comic?: T;
   chapter?: T;
   chapterPageNumber?: T;
@@ -704,7 +699,6 @@ export interface PagesSelect<T extends boolean = true> {
  * via the `definition` "media_select".
  */
 export interface MediaSelect<T extends boolean = true> {
-  uuid?: T;
   alt?: T;
   caption?: T;
   imageSizes?: T;
@@ -726,6 +720,14 @@ export interface MediaSelect<T extends boolean = true> {
   filesize?: T;
   width?: T;
   height?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-kv_select".
+ */
+export interface PayloadKvSelect<T extends boolean = true> {
+  key?: T;
+  data?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

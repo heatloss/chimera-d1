@@ -1,0 +1,36 @@
+Remote Database Export Summary
+==============================
+Export Date: 2025-11-22 15:44:10
+Source: Cloudflare D1 Remote (chimera-d1)
+Purpose: Backup before local migration to remove UUID columns
+
+Files Exported:
+--------------
+users.json (3.4KB) - User accounts and authentication
+comics.json (1.4KB) - Comic metadata
+chapters.json (3.0KB) - Chapter organization
+pages.json (31KB) - Individual comic pages
+media.json (91KB) - Media file metadata
+users_sessions.json - Active user sessions
+payload_migrations.json - Migration tracking
+
+Expected Record Counts:
+----------------------
+Users: 2
+Comics: 1
+Chapters: 5
+Pages: 29
+Media: 42
+
+Schema Notes:
+------------
+- All tables have INTEGER primary keys (id)
+- All main tables have UUID columns (to be removed during migration)
+- Foreign keys use INTEGER IDs (not UUIDs)
+
+Next Steps:
+----------
+1. Create fresh local database with Payload migrations (no UUIDs)
+2. Run migration script to import data (skip UUID columns)
+3. Verify data integrity
+4. Test functionality
