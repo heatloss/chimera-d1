@@ -5,11 +5,11 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "cross-env NEXT_TURBO_DISABLED=true NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build",
-    "build:cloudflare": "pnpm run build && opennextjs-cloudflare build",
+    "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build --webpack",
+    "build:cloudflare": "pnpm run build && opennextjs-cloudflare build --skipNextBuild",
     "deploy": "pnpm run deploy:database && pnpm run deploy:app",
-    "deploy:app": "opennextjs-cloudflare build --env=$CLOUDFLARE_ENV && opennextjs-cloudflare deploy --env=$CLOUDFLARE_ENV",
-    "deploy:database": "cross-env NODE_ENV=production PAYLOAD_SECRET=ignore payload migrate && wrangler d1 execute D1 --command 'PRAGMA optimize' --env=$CLOUDFLARE_ENV --remote",
+    "deploy:app": "pnpm run build:cloudflare && opennextjs-cloudflare deploy --env=$CLOUDFLARE_ENV",
+    "deploy:database": "cross-env NODE_ENV=production PAYLOAD_SECRET=ignore payload migrate && wrangler d1 execute chimera-d1 --command 'PRAGMA optimize' --remote",
     "dev": "cross-env NODE_OPTIONS=--no-deprecation next dev --turbopack --port 3333",
     "devsafe": "rm -rf .next && rm -rf .open-next && cross-env NODE_OPTIONS=--no-deprecation next dev --port 3333",
     "generate:importmap": "cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap",
@@ -52,7 +52,7 @@
     "@vitejs/plugin-react": "4.5.2",
     "better-sqlite3": "^12.4.1",
     "eslint": "^9.16.0",
-    "eslint-config-next": "15.4.4",
+    "eslint-config-next": "16.0.3",
     "execa": "^9.6.0",
     "jsdom": "26.1.0",
     "playwright": "1.54.1",
@@ -70,6 +70,9 @@
     "pnpm": "^9 || ^10"
   },
   "pnpm": {
+    "overrides": {
+      "jose": "6.0.0"
+    },
     "onlyBuiltDependencies": [
       "sharp",
       "esbuild",

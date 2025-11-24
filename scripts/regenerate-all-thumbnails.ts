@@ -119,7 +119,8 @@ async function main() {
     console.error('❌ Script failed:', error)
     throw error
   } finally {
-    await payload.db.drizzle.$client.close()
+    // D1 connections are managed automatically in a serverless environment
+    // and do not need explicit closing.
   }
 }
 

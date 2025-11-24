@@ -44,7 +44,7 @@
 
   "routes": [
     {
-      "pattern": "api.chimeracomics.org/*",
+      "pattern": "api.chimeracomics.org",
       "custom_domain": true,
     },
   ],

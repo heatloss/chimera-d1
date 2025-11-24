@@ -23,10 +23,11 @@ export async function OPTIONS() {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { comicId: string } }
+  context: { params: Promise<{ comicId: string }> }
 ) {
   try {
-    const comicId = parseInt(params.comicId, 10)
+    const resolvedParams = await context.params
+    const comicId = parseInt(resolvedParams.comicId, 10)
 
     if (isNaN(comicId)) {
       return NextResponse.json(
