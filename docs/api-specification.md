@@ -9,7 +9,8 @@ A webcomic content management system built on Payload CMS v3, deployed on Cloudf
 ## Base URLs
 
 - **Local Development**: `http://localhost:3333`
-- **Production**: `https://chimera-d1.mike-17c.workers.dev`
+- **Production**: `https://api.chimeracomics.org` (custom domain)
+- **Production (alternate)**: `https://chimera-d1.mike-17c.workers.dev`
 
 **Note**: All Payload CMS endpoints use the `/api/*` prefix.
 
@@ -651,7 +652,7 @@ Chimera CMS uses a dual numbering system for comic pages:
 
 - CORS headers configured for cross-origin requests
 - Currently set to allow `http://localhost:8888` for frontend development
-- Update CORS origins in production deployment
+- CORS configuration will need to be updated when frontend is deployed to production domain
 
 ## Frontend Implementation Tips
 
@@ -673,8 +674,9 @@ Chimera CMS uses a dual numbering system for comic pages:
 
 ## Production URLs
 
-- **API**: https://chimera-d1.mike-17c.workers.dev
-- **Admin Panel**: https://chimera-d1.mike-17c.workers.dev/admin
+- **API**: https://api.chimeracomics.org (primary)
+- **API (alternate)**: https://chimera-d1.mike-17c.workers.dev
+- **Admin Panel**: https://api.chimeracomics.org/admin
 
 ## Known Issues
 
