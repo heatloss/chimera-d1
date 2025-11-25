@@ -158,7 +158,8 @@ export const Comics: CollectionConfig = {
       defaultValue: 'draft',
       options: [
         { label: 'Draft', value: 'draft' },
-        { label: 'Published', value: 'published' },
+        { label: 'Hidden', value: 'hidden' },
+        { label: 'Live', value: 'live' },
         { label: 'On Hiatus', value: 'hiatus' },
         { label: 'Completed', value: 'completed' },
       ],
@@ -177,9 +178,9 @@ export const Comics: CollectionConfig = {
         { label: 'Weekly', value: 'weekly' },
         { label: 'Twice Weekly', value: 'twice-weekly' },
         { label: 'Monthly', value: 'monthly' },
-        { label: 'Irregular', value: 'irregular' },
+        { label: 'Irregular', value: 'irregular' }, // Keep - this is the default
         { label: 'Completed', value: 'completed' },
-        { label: 'Hiatus', value: 'hiatus' },
+        { label: 'Inactive', value: 'inactive' },
       ],
       admin: {
         position: 'sidebar',

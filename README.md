@@ -86,7 +86,15 @@ pnpm run build
 pnpm run deploy
 ```
 
+## Documentation
+
+- **[API Specification](docs/api-specification.md)** - Complete API endpoint documentation
+- **[Known Issues & Gotchas](docs/known-issues.md)** - ⚠️ READ THIS before making schema changes
+- **[Migration History](docs/archive/)** - Historical migration documentation
+
 ## Database Migrations
+
+⚠️ **Important:** Read [Known Issues](docs/known-issues.md) before attempting schema changes. Certain changes (like modifying default values) can break the migration system.
 
 ```bash
 # Create a new migration

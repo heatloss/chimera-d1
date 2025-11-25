@@ -190,8 +190,8 @@ export interface Comic {
         id?: string | null;
       }[]
     | null;
-  status: 'draft' | 'published' | 'hiatus' | 'completed';
-  publishSchedule: 'daily' | 'weekly' | 'twice-weekly' | 'monthly' | 'irregular' | 'completed' | 'hiatus';
+  status: 'draft' | 'hidden' | 'live' | 'hiatus' | 'completed';
+  publishSchedule: 'daily' | 'weekly' | 'twice-weekly' | 'monthly' | 'irregular' | 'completed' | 'inactive';
   /**
    * Select all genres that apply to your comic
    */

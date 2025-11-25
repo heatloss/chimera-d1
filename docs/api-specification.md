@@ -389,6 +389,52 @@ Authorization: Bearer jwt_token (optional - affects access to unpublished conten
 - Pages within each chapter are sorted by `chapterPageNumber`
 - Respects user permissions (unpublished content filtered for non-creators)
 
+### Metadata Options
+
+#### Get Metadata Options (`GET /api/metadata`)
+
+Retrieve all available metadata options for comics and pages. This endpoint returns static configuration values used to populate dropdown menus and selectors in the frontend. No authentication required.
+
+```json
+// Request
+GET /api/metadata
+
+// Response
+{
+  "creditRoles": [
+    { "label": "Writer", "value": "writer" },
+    { "label": "Artist", "value": "artist" },
+    // ... 8 total role options
+  ],
+  "publishSchedules": [
+    { "label": "Daily", "value": "daily" },
+    { "label": "Weekly", "value": "weekly" },
+    // ... 7 total schedule options
+  ],
+  "genres": [
+    { "label": "Action-Adventure", "value": "action-adventure" },
+    { "label": "Comedy", "value": "comedy" },
+    // ... 27 total genre options
+  ],
+  "comicStatuses": [
+    { "label": "Draft", "value": "draft" },
+    { "label": "Published", "value": "published" },
+    // ... 4 total status options
+  ],
+  "pageStatuses": [
+    { "label": "Draft", "value": "draft" },
+    { "label": "Scheduled", "value": "scheduled" },
+    { "label": "Published", "value": "published" }
+  ]
+}
+```
+
+**Features:**
+- No authentication required (public configuration data)
+- Returns all available options for credit roles, publishing schedules, genres, and statuses
+- Can be cached on frontend since values are static
+- Used to populate dropdown menus and multi-select components
+
 ### Chapter Management
 
 #### Bulk Reorder Chapters (`POST /api/reorder-chapters`)
