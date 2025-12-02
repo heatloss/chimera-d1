@@ -12,7 +12,17 @@ export const Comics: CollectionConfig = {
     create: ({ req: { user } }) => {
       return user && ['creator', 'editor', 'admin'].includes(user.role)
     },
-    read: () => true, // Comics are public (filtering by status happens in queries)
+    read: ({ req: { user } }) => {
+      if (user?.role === 'admin') return true
+      if (user?.role === 'editor') return true
+      if (!user?.id) return false
+      // Creators can only see their own comics
+      return {
+        author: {
+          equals: user.id,
+        },
+      }
+    },
     update: ({ req: { user } }) => {
       if (user?.role === 'admin') return true
       if (user?.role === 'editor') return true
@@ -79,6 +89,10 @@ export const Comics: CollectionConfig = {
       label: 'Creator',
       admin: {
         position: 'sidebar',
+        condition: (data, siblingData, { user }) => {
+          // Only show for admins and editors who can see all users
+          return user?.role === 'admin' || user?.role === 'editor'
+        },
       },
       hooks: {
         beforeChange: [
@@ -146,7 +160,7 @@ export const Comics: CollectionConfig = {
           type: 'text',
           label: 'Website/Social URL',
           admin: {
-            description: 'Optional link to creator\'s website or social media',
+            description: "Optional link to creator's website or social media",
           },
         },
       ],
@@ -157,8 +171,7 @@ export const Comics: CollectionConfig = {
       required: true,
       defaultValue: 'draft',
       options: [
-        { label: 'Draft', value: 'draft' },
-        { label: 'Hidden', value: 'hidden' },
+        { label: 'Draft/Hidden', value: 'draft' },
         { label: 'Live', value: 'live' },
         { label: 'On Hiatus', value: 'hiatus' },
         { label: 'Completed', value: 'completed' },
@@ -230,7 +243,8 @@ export const Comics: CollectionConfig = {
       hasMany: true,
       label: 'Tags',
       admin: {
-        description: 'Custom tags for better searchability (e.g., "lgbtq", "anthropomorphic", "noir")',
+        description:
+          'Custom tags for better searchability (e.g., "lgbtq", "anthropomorphic", "noir")',
       },
     },
     {
@@ -247,7 +261,7 @@ export const Comics: CollectionConfig = {
       name: 'seoMeta',
       type: 'group',
       label: 'SEO & Metadata',
-            fields: [
+      fields: [
         {
           name: 'metaTitle',
           type: 'text',
@@ -281,7 +295,7 @@ export const Comics: CollectionConfig = {
       name: 'stats',
       type: 'group',
       label: 'Statistics',
-            fields: [
+      fields: [
         {
           name: 'totalPages',
           type: 'number',

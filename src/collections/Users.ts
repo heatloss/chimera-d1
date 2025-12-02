@@ -6,6 +6,39 @@ export const Users: CollectionConfig = {
     useAsTitle: 'email',
   },
   auth: true,
+  access: {
+    // Only admins can create new user accounts
+    create: ({ req: { user } }) => {
+      return user?.role === 'admin'
+    },
+    // Users can only see their own account, admins/editors can see all
+    read: ({ req: { user } }) => {
+      if (user?.role === 'admin') return true
+      if (user?.role === 'editor') return true
+      if (!user?.id) return false
+      // All other users can only see their own account
+      return {
+        id: {
+          equals: user.id,
+        },
+      }
+    },
+    // Users can update their own account, admins can update any
+    update: ({ req: { user } }) => {
+      if (user?.role === 'admin') return true
+      if (!user?.id) return false
+      // Users can only update their own account
+      return {
+        id: {
+          equals: user.id,
+        },
+      }
+    },
+    // Only admins can delete user accounts
+    delete: ({ req: { user } }) => {
+      return user?.role === 'admin'
+    },
+  },
   fields: [
     {
       name: 'role',

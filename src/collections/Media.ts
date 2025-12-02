@@ -11,7 +11,17 @@ export const Media: CollectionConfig = {
     create: ({ req: { user } }) => {
       return user && ['creator', 'editor', 'admin'].includes(user.role)
     },
-    read: () => true,
+    read: ({ req: { user } }) => {
+      if (user?.role === 'admin') return true
+      if (user?.role === 'editor') return true
+      if (!user?.id) return false
+      // Creators can only see their own uploads
+      return {
+        uploadedBy: {
+          equals: user.id,
+        },
+      }
+    },
     update: ({ req: { user } }) => {
       if (user?.role === 'admin') return true
       if (user?.role === 'editor') return true

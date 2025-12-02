@@ -60,6 +60,7 @@ export default buildConfig({
   // database-adapter-config-start
   db: sqliteD1Adapter({
     binding: cloudflare.env.D1,
+    push: false, // Disable automatic schema push - use manual migrations for SQLite/D1
   }),
   // database-adapter-config-end
   plugins: [

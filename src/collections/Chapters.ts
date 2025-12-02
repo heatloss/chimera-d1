@@ -15,7 +15,36 @@ export const Chapters: CollectionConfig = {
     create: ({ req: { user } }) => {
       return user && ['creator', 'editor', 'admin'].includes(user.role)
     },
-    read: () => true,
+    read: async ({ req }) => {
+      const { user } = req
+      if (user?.role === 'admin') return true
+      if (user?.role === 'editor') return true
+      if (!user?.id) return false
+
+      // For creators, find all comics they own and allow access to those chapters
+      try {
+        const userComics = await req.payload.find({
+          collection: 'comics',
+          where: {
+            author: { equals: user.id }
+          },
+          limit: 1000,
+        })
+
+        const comicIds = userComics.docs.map(comic => comic.id)
+
+        if (comicIds.length === 0) return false
+
+        return {
+          comic: {
+            in: comicIds,
+          },
+        }
+      } catch (error) {
+        console.error('Error in chapters read access:', error)
+        return false
+      }
+    },
     update: ({ req: { user } }) => {
       if (user?.role === 'admin') return true
       if (user?.role === 'editor') return true

@@ -167,7 +167,7 @@ export interface Comic {
    * A brief summary of your webcomic for readers
    */
   description?: string | null;
-  author: number | User;
+  author?: (number | null) | User;
   /**
    * Main cover art for the comic series
    */
@@ -190,7 +190,7 @@ export interface Comic {
         id?: string | null;
       }[]
     | null;
-  status: 'draft' | 'hidden' | 'live' | 'hiatus' | 'completed';
+  status: 'draft' | 'live' | 'hiatus' | 'completed';
   publishSchedule: 'daily' | 'weekly' | 'twice-weekly' | 'monthly' | 'irregular' | 'completed' | 'inactive';
   /**
    * Select all genres that apply to your comic

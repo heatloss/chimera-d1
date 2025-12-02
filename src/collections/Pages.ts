@@ -16,7 +16,17 @@ export const Pages: CollectionConfig = {
     create: ({ req: { user } }) => {
       return user && ['creator', 'editor', 'admin'].includes(user.role)
     },
-    read: () => true, // Pages are public (filtering by status happens in queries)
+    read: ({ req: { user } }) => {
+      if (user?.role === 'admin') return true
+      if (user?.role === 'editor') return true
+      if (!user?.id) return false
+      // Creators can only see pages for their own comics
+      return {
+        'comic.author': {
+          equals: user.id,
+        },
+      }
+    },
     update: ({ req: { user } }) => {
       if (user?.role === 'admin') return true
       if (user?.role === 'editor') return true
