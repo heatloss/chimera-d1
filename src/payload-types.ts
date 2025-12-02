@@ -380,7 +380,7 @@ export interface Page {
    */
   chapter?: (number | null) | Chapter;
   /**
-   * Page number within this chapter (0 = chapter cover, 1+ = regular pages)
+   * Page number within this chapter (starting from 1)
    */
   chapterPageNumber: number;
   /**

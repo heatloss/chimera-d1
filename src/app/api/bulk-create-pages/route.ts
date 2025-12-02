@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
             altText: pageData.altText || '',
             authorNotes: pageData.authorNotes || '',
             status: 'draft',
-            chapterPageNumber: 0, // Temporary value, hooks will recalculate
+            // Don't set chapterPageNumber - let the hook auto-assign it
           },
         });
 

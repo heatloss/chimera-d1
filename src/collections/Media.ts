@@ -1,6 +1,14 @@
 import type { CollectionConfig } from 'payload'
 // NOTE: Using dynamic imports to avoid bundling Sharp into Workers build
 
+// Helper hook to normalize string IDs to integers for D1 adapter compatibility
+const normalizeRelationshipId = ({ value }) => {
+  if (value && typeof value === 'string') {
+    return parseInt(value, 10)
+  }
+  return value
+}
+
 export const Media: CollectionConfig = {
   slug: 'media',
   admin: {
@@ -114,6 +122,7 @@ export const Media: CollectionConfig = {
       },
       hooks: {
         beforeValidate: [
+          normalizeRelationshipId,
           ({ req, operation, value }) => {
             if (operation === 'create' && !value && req.user?.id) {
               return req.user.id
@@ -151,6 +160,9 @@ export const Media: CollectionConfig = {
           label: 'Related Comic',
           admin: {
             description: 'Which comic this image belongs to',
+          },
+          hooks: {
+            beforeValidate: [normalizeRelationshipId],
           },
         },
         {

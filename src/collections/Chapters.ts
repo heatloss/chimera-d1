@@ -45,26 +45,62 @@ export const Chapters: CollectionConfig = {
         return false
       }
     },
-    update: ({ req: { user } }) => {
+    update: async ({ req }) => {
+      const { user } = req
       if (user?.role === 'admin') return true
       if (user?.role === 'editor') return true
       if (!user?.id) return false
-      // Creators can only edit chapters for their own comics
-      return {
-        'comic.author': {
-          equals: user.id,
-        },
+
+      // For creators, find all comics they own and allow updates to those chapters
+      try {
+        const userComics = await req.payload.find({
+          collection: 'comics',
+          where: {
+            author: { equals: user.id }
+          },
+          limit: 1000,
+        })
+
+        const comicIds = userComics.docs.map(comic => comic.id)
+        if (comicIds.length === 0) return false
+
+        return {
+          comic: {
+            in: comicIds,
+          },
+        }
+      } catch (error) {
+        console.error('Error in chapters update access:', error)
+        return false
       }
     },
-    delete: ({ req: { user } }) => {
+    delete: async ({ req }) => {
+      const { user } = req
       if (user?.role === 'admin') return true
       if (user?.role === 'editor') return true
       if (!user?.id) return false
-      // Creators can only delete chapters for their own comics
-      return {
-        'comic.author': {
-          equals: user.id,
-        },
+
+      // For creators, find all comics they own and allow deletes for those chapters
+      try {
+        const userComics = await req.payload.find({
+          collection: 'comics',
+          where: {
+            author: { equals: user.id }
+          },
+          limit: 1000,
+        })
+
+        const comicIds = userComics.docs.map(comic => comic.id)
+        if (comicIds.length === 0) return false
+
+        return {
+          comic: {
+            in: comicIds,
+          },
+        }
+      } catch (error) {
+        console.error('Error in chapters delete access:', error)
+        return false
       }
     },
   },
@@ -78,6 +114,17 @@ export const Chapters: CollectionConfig = {
       admin: {
         description: 'Which comic series this chapter belongs to',
         position: 'sidebar',
+      },
+      hooks: {
+        beforeValidate: [
+          ({ value }) => {
+            // Normalize string IDs to integers for D1 adapter compatibility
+            if (value && typeof value === 'string') {
+              return parseInt(value, 10)
+            }
+            return value
+          },
+        ],
       },
       defaultValue: async ({ user, req }) => {
         // Auto-select comic if user has only one

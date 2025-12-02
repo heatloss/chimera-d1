@@ -1,5 +1,13 @@
 import type { CollectionConfig } from 'payload'
 
+// Helper hook to normalize string IDs to integers for D1 adapter compatibility
+const normalizeRelationshipId = ({ value }) => {
+  if (value && typeof value === 'string') {
+    return parseInt(value, 10)
+  }
+  return value
+}
+
 export const Comics: CollectionConfig = {
   slug: 'comics',
   admin: {
@@ -95,6 +103,7 @@ export const Comics: CollectionConfig = {
         },
       },
       hooks: {
+        beforeValidate: [normalizeRelationshipId],
         beforeChange: [
           ({ req, operation, value }) => {
             // Auto-assign current user as author on create
@@ -114,6 +123,9 @@ export const Comics: CollectionConfig = {
       admin: {
         description: 'Main cover art for the comic series',
         position: 'sidebar',
+      },
+      hooks: {
+        beforeValidate: [normalizeRelationshipId],
       },
     },
     {
@@ -286,6 +298,9 @@ export const Comics: CollectionConfig = {
           label: 'Social Media Image',
           admin: {
             description: 'Image for social media sharing (defaults to cover image)',
+          },
+          hooks: {
+            beforeValidate: [normalizeRelationshipId],
           },
         },
       ],

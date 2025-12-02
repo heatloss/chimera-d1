@@ -1,5 +1,13 @@
 import type { CollectionConfig } from 'payload'
 
+// Helper hook to normalize string IDs to integers for D1 adapter compatibility
+const normalizeRelationshipId = ({ value }) => {
+  if (value && typeof value === 'string') {
+    return parseInt(value, 10)
+  }
+  return value
+}
+
 export const Pages: CollectionConfig = {
   slug: 'pages',
   admin: {
@@ -38,8 +46,34 @@ export const Pages: CollectionConfig = {
         },
       }
     },
-    delete: ({ req: { user } }) => {
-      return user?.role === 'admin'
+    delete: async ({ req }) => {
+      const { user } = req
+      if (user?.role === 'admin') return true
+      if (user?.role === 'editor') return true
+      if (!user?.id) return false
+
+      // For creators, find all comics they own and allow deletes for those pages
+      try {
+        const userComics = await req.payload.find({
+          collection: 'comics',
+          where: {
+            author: { equals: user.id }
+          },
+          limit: 1000,
+        })
+
+        const comicIds = userComics.docs.map(comic => comic.id)
+        if (comicIds.length === 0) return false
+
+        return {
+          comic: {
+            in: comicIds,
+          },
+        }
+      } catch (error) {
+        console.error('Error in pages delete access:', error)
+        return false
+      }
     },
   },
   fields: [
@@ -52,6 +86,9 @@ export const Pages: CollectionConfig = {
       admin: {
         description: 'Which comic series this page belongs to',
         position: 'sidebar',
+      },
+      hooks: {
+        beforeValidate: [normalizeRelationshipId],
       },
       defaultValue: async ({ user, req }) => {
         // Auto-select comic if user has only one
@@ -85,6 +122,9 @@ export const Pages: CollectionConfig = {
         position: 'sidebar',
         sortOptions: 'chapters.order', // Sort by chapter order, not title
       },
+      hooks: {
+        beforeValidate: [normalizeRelationshipId],
+      },
     },
     {
       name: 'chapterPageNumber',
@@ -92,12 +132,12 @@ export const Pages: CollectionConfig = {
       required: true,
       label: 'Chapter Page Number',
       admin: {
-        description: 'Page number within this chapter (0 = chapter cover, 1+ = regular pages)',
+        description: 'Page number within this chapter (starting from 1)',
         position: 'sidebar',
       },
       validate: (val: number) => {
-        if (val !== undefined && val !== null && val < 0) {
-          return 'Chapter page number must be 0 or greater (0 = chapter cover)'
+        if (val !== undefined && val !== null && val < 1) {
+          return 'Chapter page number must be 1 or greater'
         }
         return true
       },
@@ -123,8 +163,8 @@ export const Pages: CollectionConfig = {
                   })
 
                   if (existingPages.docs.length === 0) {
-                    // First page in chapter = cover (chapterPageNumber: 0)
-                    return 0
+                    // First page in chapter starts at 1
+                    return 1
                   } else {
                     // Subsequent pages = increment from highest
                     const highestPageNumber = existingPages.docs[0]?.chapterPageNumber || 0
@@ -212,6 +252,9 @@ export const Pages: CollectionConfig = {
       admin: {
         description: 'The main comic page image that readers will see',
       },
+      hooks: {
+        beforeValidate: [normalizeRelationshipId],
+      },
     },
     {
       name: 'pageExtraImages',
@@ -227,6 +270,9 @@ export const Pages: CollectionConfig = {
           relationTo: 'media',
           required: true,
           label: 'Image',
+          hooks: {
+            beforeValidate: [normalizeRelationshipId],
+          },
         },
         {
           name: 'altText',
@@ -246,6 +292,9 @@ export const Pages: CollectionConfig = {
       label: 'Thumbnail Image',
       admin: {
         description: 'Custom thumbnail image (auto-populated from main page image if empty)',
+      },
+      hooks: {
+        beforeValidate: [normalizeRelationshipId],
       },
     },
     {
@@ -316,6 +365,9 @@ export const Pages: CollectionConfig = {
             readOnly: true,
             description: 'Previous page in the series',
           },
+          hooks: {
+            beforeValidate: [normalizeRelationshipId],
+          },
         },
         {
           name: 'nextPage',
@@ -324,6 +376,9 @@ export const Pages: CollectionConfig = {
           admin: {
             readOnly: true,
             description: 'Next page in the series',
+          },
+          hooks: {
+            beforeValidate: [normalizeRelationshipId],
           },
         },
         {
@@ -508,8 +563,8 @@ export const Pages: CollectionConfig = {
               }
 
               // Calculate the global page number
-              // All pages (including covers) are counted equally for global numbering
-              const calculatedGlobal = totalPreviousPages + data.chapterPageNumber + 1
+              // All pages are counted sequentially across all chapters
+              const calculatedGlobal = totalPreviousPages + data.chapterPageNumber
 
               data.globalPageNumber = calculatedGlobal
 
