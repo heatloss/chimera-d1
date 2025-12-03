@@ -26,7 +26,11 @@
       "Bash(curl -s https://chimera-d1.mike-17c.workers.dev/admin -I)",
       "Bash(head -5 sleep 10 echo \"Checking remote D1 schema...\" pnpm wrangler d1 execute chimera-d1 --remote --command \"SELECT name FROM sqlite_master WHERE type=''''table'''' AND name IN (''''chapters'''', ''''comics'''', ''''pages'''') ORDER BY name;\")",
       "Bash(curl -s 'https://chimera-d1.mike-17c.workers.dev/api/media?limit=2')",
-      "Bash(curl -s 'https://chimera-d1.mike-17c.workers.dev/api/pages?limit=2')"
+      "Bash(curl -s 'https://chimera-d1.mike-17c.workers.dev/api/pages?limit=2')",
+      "WebFetch(domain:github.com)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(PAYLOAD_SECRET=8e51bde9b249b9105f4d97ccce8b336098825ae5547b4a4b41f99600694d836a pnpm tsx:*)"
     ],
     "deny": [],
     "ask": []

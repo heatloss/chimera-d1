@@ -65,10 +65,12 @@ export default buildConfig({
   // database-adapter-config-end
   plugins: [
     // storage-adapter-placeholder
-    r2Storage({
-      bucket: cloudflare.env.R2,
-      collections: { media: true },
-    }),
+    // DISABLED: R2 storage plugin doesn't work with programmatic uploads
+    // We handle R2 uploads manually in Media collection's beforeChange hook
+    // r2Storage({
+    //   bucket: cloudflare.env.R2,
+    //   collections: { media: true },
+    // }),
   ],
 })
 

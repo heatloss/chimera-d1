@@ -4,7 +4,7 @@
 
 A webcomic content management system built on Payload CMS v3, deployed on Cloudflare Workers with D1 database and R2 storage. This API provides complete backend functionality for managing webcomic series, chapters, pages, users, and media assets with role-based access control.
 
-**Current Version**: November 2024 (Integer ID Implementation)
+**Current Version**: December 2024 (Payload v3.65.0)
 
 ## Base URLs
 
@@ -134,7 +134,7 @@ Webcomic series management.
       "url": "https://johnsmith.art"
     }
   ],
-  "status": "draft|published|hiatus|completed",
+  "status": "draft|live|hiatus|completed",
   "publishSchedule": "daily|weekly|twice-weekly|monthly|irregular|completed|hiatus",
   "genres": ["adventure", "comedy", "fantasy"],
   "tags": ["custom", "tags", "here"],
@@ -154,8 +154,7 @@ Individual comic page management.
 - `POST /api/pages` - Create new page
 - `GET /api/pages/:id` - Get specific page
 - `PATCH /api/pages/:id` - Update page
-- `DELETE /api/pages/:id` - Delete page (admin only)
-- `GET /api/pages-by-comic/:comicId` - **Workaround endpoint** (see Known Issues)
+- `DELETE /api/pages/:id` - Delete page
 
 #### Query Parameters
 
@@ -171,9 +170,9 @@ Individual comic page management.
 ```json
 {
   "id": 10,
-  "comic": 1, // Integer ID
-  "chapter": 2, // Integer ID
-  "chapterPageNumber": 0, // Page number within chapter (0 = chapter cover, 1+ = regular pages)
+  "comic": 1, // Integer ID (or full object if populated)
+  "chapter": 2, // Integer ID (or full object if populated)
+  "chapterPageNumber": 1, // Page number within chapter (1-based, auto-assigned)
   "globalPageNumber": 15, // Auto-calculated sequential number across entire comic (1-based)
   "title": "Optional page title",
   "displayTitle": "Chapter Title - Page 0: Optional Title", // Auto-generated
@@ -315,7 +314,7 @@ mediaType: "comic_page|comic_cover|chapter_cover|user_avatar|general"
 
 ## Custom API Endpoints
 
-These endpoints extend Payload's built-in functionality with custom business logic.
+These endpoints extend Payload's built-in functionality with custom business logic or work around D1 adapter limitations.
 
 ### Comic Data Aggregation
 
@@ -417,9 +416,10 @@ GET /api/metadata
     // ... 27 total genre options
   ],
   "comicStatuses": [
-    { "label": "Draft", "value": "draft" },
-    { "label": "Published", "value": "published" },
-    // ... 4 total status options
+    { "label": "Draft/Hidden", "value": "draft" },
+    { "label": "Live", "value": "live" },
+    { "label": "On Hiatus", "value": "hiatus" },
+    { "label": "Completed", "value": "completed" }
   ],
   "pageStatuses": [
     { "label": "Draft", "value": "draft" },
@@ -662,14 +662,17 @@ const thumbnailSize = mediaObject.imageSizes.thumbnail.fileSize
 
 Chimera CMS uses a dual numbering system for comic pages:
 
-1. **Chapter Page Numbers**: Start at 0 for each chapter (0 = cover, 1+ = regular pages)
+1. **Chapter Page Numbers**: Start at 1 for each chapter, increment sequentially (1, 2, 3...)
 2. **Global Page Numbers**: Sequential numbering across the entire comic (1-based)
 
 ### Automatic Assignment
 
-- **Chapter pages**: Auto-assigned based on existing pages in the chapter
+- **Chapter pages**: Auto-assigned based on existing pages in the chapter (first page = 1, second = 2, etc.)
 - **Global pages**: Auto-calculated based on chapter order and chapter page position
 - Hooks maintain numbering automatically on create/update/delete operations
+- No special handling for "cover pages" - all pages are numbered sequentially
+
+**Note**: Creators can distinguish cover pages, credit pages, etc. using page titles, author notes, or other metadata. The system treats all pages equally for numbering purposes.
 
 ## Development Notes
 
@@ -724,57 +727,95 @@ Chimera CMS uses a dual numbering system for comic pages:
 - **API (alternate)**: https://chimera-d1.mike-17c.workers.dev
 - **Admin Panel**: https://api.chimeracomics.org/admin
 
-## Known Issues
+## Known Issues & D1 Adapter Limitations
 
-### Payload REST API `where` Clause - RESOLVED (November 2024)
+### ~~DELETE Operations Don't Work~~ ✅ FIXED in v3.65.0
 
-**Previous Issue**: Payload CMS v3.64.0's REST API handler had a bug where `where` clause queries on relationship fields would hang indefinitely.
+**Previous Issue**: DELETE operations returned 200 success but did not remove records from the database.
 
-**Status**: ✅ **RESOLVED** - The standard Payload endpoints with where clauses are now working correctly for browser/frontend requests:
-- `GET /api/chapters?where[comic][equals]=1` - ✅ Works in browsers
-- `GET /api/pages?where[comic][equals]=1` - ✅ Works in browsers
+**Resolution**: Fixed in Payload v3.65.0 (Drizzle ORM v0.44.7). DELETE operations now work correctly.
 
-**Verified Working Example**:
-```javascript
-// This works correctly in browsers and frontend applications
-GET /api/pages?where[comic][equals]=1&populate=pageImage&sort=-globalPageNumber&limit=5
+**Affected Endpoints** (now working):
+- `DELETE /api/pages/:id` - ✅ Works correctly
+- `DELETE /api/comics/:id` - ✅ Should work correctly
+- `DELETE /api/chapters/:id` - ✅ Should work correctly
+- `DELETE /api/media/:id` - ✅ Works correctly with automatic thumbnail cleanup
 
-// Response includes properly filtered and populated data
-{
-  "docs": [ /* filtered pages for comic ID 1 */ ],
-  "totalDocs": 29,
-  "limit": 5,
-  // ... standard Payload pagination response
-}
-```
+### R2 Storage Plugin Limitations
 
-**Note**: The issue appears to have been resolved after a fresh `node_modules` installation. The endpoints work correctly when accessed from browsers and frontend applications with proper headers (including Authorization tokens where needed).
+**Issue**: The `@payloadcms/storage-r2` plugin does not work with programmatic `payload.create()` calls. Files are only uploaded to R2 when using Payload's admin UI, not when creating media through custom API endpoints.
 
-**Backup Endpoints Available**:
+**Workarounds Implemented**:
+- Bulk upload endpoint manually uploads files to R2 using `bucket.put()`
+- Filenames are sanitized (spaces → underscores, special chars removed)
+- Uses `Uint8Array` instead of `Buffer` for Miniflare compatibility
 
-Two custom endpoints are maintained as backups and alternatives:
+**Impact**: Any custom upload endpoints must manually handle R2 uploads rather than relying on the R2 storage plugin.
+
+### String ID Normalization Required
+
+**Issue**: The D1 adapter requires integer IDs, but relationship fields sometimes receive string IDs from API requests. This causes validation errors like "invalid relationships: 3 0".
+
+**Workarounds Implemented**:
+- Field-level `beforeValidate` hooks on all relationship fields
+- `normalizeRelationshipId` helper function converts string IDs to integers
+- Applied to all relationship fields across Comics, Chapters, Pages, and Media collections
+
+**Impact**: Developers must remember to add normalization hooks to any new relationship fields.
+
+### Access Control Query Limitations
+
+**Issue**: Nested access control queries like `'comic.author': { equals: user.id }` don't work with the D1 adapter.
+
+**Workarounds Implemented**:
+- Access control functions manually fetch related records first
+- Then filter using simple `in` or `equals` queries
+- Example: Fetch user's comics, then filter pages by `comic: { in: comicIds }`
+
+**Impact**: More complex access control logic and additional database queries required.
+
+### Schema Migration Risks
+
+**Issue**: The D1 adapter's automatic schema push (`push: true`) attempts unsafe operations like `DROP TABLE` when detecting schema changes, which fails due to foreign key constraints.
+
+**Workarounds Implemented**:
+- Disabled automatic schema push: `push: false`
+- Manual migrations only
+- Database backups before any schema changes
+
+**Impact**: Schema changes require manual migration scripts and careful testing.
+
+## Alternative Endpoints
+
+Several custom endpoints provide convenience features or work around remaining D1 adapter limitations:
 
 #### Get Chapters by Comic ID
 ```javascript
 GET /api/chapters-by-comic/:comicId
-
-// Example
-GET /api/chapters-by-comic/1
 ```
+**Note**: Standard Payload endpoint should work, this is a convenience wrapper.
 
 #### Get Pages by Comic ID
 ```javascript
 GET /api/pages-by-comic/:comicId?limit=20&page=1
-
-// Example
-GET /api/pages-by-comic/1?limit=10&page=2
 ```
-
-These backup endpoints provide the same functionality and can be used if any where clause issues resurface in future Payload updates.
+**Note**: Standard Payload endpoint should work, this is a convenience wrapper.
 
 ## Migration Notes
 
-This API specification reflects the November 2024 update where:
+### December 2024 Update (v3.65.0)
+- **MAJOR FIX**: Upgraded to Payload v3.65.0 which includes Drizzle ORM v0.44.7
+- **DELETE operations now work correctly** - no longer need custom delete endpoints
+- Page numbering changed from 0-based to 1-based (all pages start at 1)
+- Removed special "cover page" handling (page 0)
+- Fixed media image upload issues (filename sanitization, collision detection, manual R2 uploads)
+- ~~Added `/delete-page/:id` custom endpoint~~ (removed - no longer needed)
+- Implemented manual R2 file uploads for all media operations (R2 storage plugin doesn't work with REST API)
+- Added field-level ID normalization hooks to all relationship fields
+- Updated comments about `afterOperation` hook (was disabled due to DELETE bug, now fixed)
+- Documented all D1 adapter limitations and workarounds
+
+### November 2024 Update
 - UUID fields were removed from all collections
 - Integer IDs restored as primary identifiers
 - Two thumbnail sizes (400px, 800px) instead of seven

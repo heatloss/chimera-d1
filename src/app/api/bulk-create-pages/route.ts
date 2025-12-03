@@ -125,10 +125,35 @@ export async function POST(request: NextRequest) {
         // Step 1: Upload image to Media collection
         // Convert File to the format Payload expects
         const fileBuffer = await file.arrayBuffer();
+
+        // Sanitize filename: replace spaces with underscores, remove special chars
+        const sanitizedName = file.name
+          .replace(/\s+/g, '_')            // Replace spaces with underscores
+          .replace(/[^a-zA-Z0-9._-]/g, '') // Remove special chars (keep dots, underscores, hyphens)
+          .replace(/_+/g, '_')             // Collapse multiple underscores
+          .toLowerCase();                  // Lowercase for consistency
+
+        // Get R2 bucket to manually upload files (R2 plugin doesn't work with programmatic uploads)
+        const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
+        const bucket = cloudflare?.env?.R2
+
+        if (!bucket) {
+          throw new Error('R2 bucket not configured')
+        }
+
+        // Upload main image file to R2
+        const mainFileKey = `media/${sanitizedName}`
+        // Use Uint8Array instead of Buffer for compatibility with Miniflare
+        await bucket.put(mainFileKey, new Uint8Array(fileBuffer), {
+          httpMetadata: {
+            contentType: file.type,
+          },
+        })
+
         const fileData = {
           data: Buffer.from(fileBuffer),
           mimetype: file.type,
-          name: file.name,
+          name: sanitizedName,
           size: file.size,
         };
 
@@ -139,6 +164,7 @@ export async function POST(request: NextRequest) {
             mediaType: 'comic_page',
           },
           file: fileData,
+          user, // Pass user context so hooks can access req.user
         });
 
         // Step 2: Create page with uploaded media
@@ -154,6 +180,7 @@ export async function POST(request: NextRequest) {
             status: 'draft',
             // Don't set chapterPageNumber - let the hook auto-assign it
           },
+          user, // Pass user context for access control and hooks
         });
 
         // Success!
@@ -171,16 +198,19 @@ export async function POST(request: NextRequest) {
         console.log(`✅ Created page: ${pageDoc.displayTitle}`);
       } catch (error: any) {
         // Individual page failed
+        console.error(`❌ Failed to create page for ${file?.name}:`, error);
+        console.error('Error stack:', error.stack);
+
         pageResults.push({
           success: false,
-          error: error.message,
+          error: error.message || String(error),
           filename: file?.name || `file_${i}`,
           title: pageData.title || '',
         });
         results.failed++;
 
         console.error(
-          `❌ Failed to create page for ${file?.name}: ${error.message}`,
+          `❌ Failed to create page for ${file?.name}: ${error.message || String(error)}`,
         );
       }
     }

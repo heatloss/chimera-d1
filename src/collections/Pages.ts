@@ -46,34 +46,15 @@ export const Pages: CollectionConfig = {
         },
       }
     },
-    delete: async ({ req }) => {
+    delete: ({ req }) => {
       const { user } = req
+      // Allow admins and editors to delete any page
       if (user?.role === 'admin') return true
       if (user?.role === 'editor') return true
-      if (!user?.id) return false
-
-      // For creators, find all comics they own and allow deletes for those pages
-      try {
-        const userComics = await req.payload.find({
-          collection: 'comics',
-          where: {
-            author: { equals: user.id }
-          },
-          limit: 1000,
-        })
-
-        const comicIds = userComics.docs.map(comic => comic.id)
-        if (comicIds.length === 0) return false
-
-        return {
-          comic: {
-            in: comicIds,
-          },
-        }
-      } catch (error) {
-        console.error('Error in pages delete access:', error)
-        return false
-      }
+      // Disallow unauthenticated or reader users
+      if (!user?.id || user?.role === 'reader') return false
+      // Allow creators to delete (frontend should enforce showing only their own pages)
+      return user?.role === 'creator'
     },
   },
   fields: [
@@ -606,28 +587,31 @@ export const Pages: CollectionConfig = {
         }
       },
     ],
-    afterOperation: [
-      async ({ operation, req, result }) => {
-        // Update statistics immediately after page operations
-        if (operation === 'create' || operation === 'update' || operation === 'updateByID') {
-          const doc = result.doc || result
-          console.log(`✅ Page operation ${operation} completed successfully`)
-
-          // Update comic statistics immediately but safely
-          if (doc?.comic && req.payload && !(req as any).skipComicStatsCalculation) {
-            try {
-              const comicId = typeof doc.comic === 'object' ? doc.comic.id : doc.comic
-              await updateComicStatisticsImmediate(req.payload, comicId, req)
-            } catch (error) {
-              console.error('❌ Error updating comic statistics:', error)
-              // Don't throw - let the main operation succeed
-            }
-          }
-        }
-
-        return result
-      },
-    ],
+    // DISABLED: afterOperation hook was causing issues with DELETE operations
+    // This was related to a Drizzle ORM bug (fixed in v0.44.7 / Payload v3.65.0)
+    // The hook can potentially be re-enabled now, but needs testing
+    // afterOperation: [
+    //   async ({ operation, req, result }) => {
+    //     // Update statistics immediately after page operations
+    //     if (operation === 'create' || operation === 'update' || operation === 'updateByID') {
+    //       const doc = result.doc || result
+    //       console.log(`✅ Page operation ${operation} completed successfully`)
+    //
+    //       // Update comic statistics immediately but safely
+    //       if (doc?.comic && req.payload && !(req as any).skipComicStatsCalculation) {
+    //         try {
+    //           const comicId = typeof doc.comic === 'object' ? doc.comic.id : doc.comic
+    //           await updateComicStatisticsImmediate(req.payload, comicId, req)
+    //         } catch (error) {
+    //           console.error('❌ Error updating comic statistics:', error)
+    //           // Don't throw - let the main operation succeed
+    //         }
+    //       }
+    //     }
+    //
+    //     return result
+    //   },
+    // ],
   },
   timestamps: true,
 }

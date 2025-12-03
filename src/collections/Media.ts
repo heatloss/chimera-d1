@@ -181,6 +181,82 @@ export const Media: CollectionConfig = {
         if (req.file && req.file.data) {
           console.log(`🎨 Processing image upload: ${req.file.name}`)
 
+          // Get R2 bucket (needed for both main image and thumbnails)
+          const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
+          const bucket = cloudflare?.env?.R2
+
+          if (bucket) {
+            // WORKAROUND: R2 storage plugin doesn't work with programmatic uploads
+            // Manually upload the main image file to R2
+            console.log('📤 Manually uploading main image to R2')
+
+            // Sanitize filename: replace spaces with underscores, remove special chars
+            let sanitizedName = req.file.name
+              .replace(/\s+/g, '_')            // Replace spaces with underscores
+              .replace(/[^a-zA-Z0-9._-]/g, '') // Remove special chars (keep dots, underscores, hyphens)
+              .replace(/_+/g, '_')             // Collapse multiple underscores
+              .toLowerCase()                   // Lowercase for consistency
+
+            // Check for filename collision and append suffix if needed
+            let finalFilename = sanitizedName
+            let attempt = 0
+            const maxAttempts = 100 // Prevent infinite loop
+
+            while (attempt < maxAttempts) {
+              // Check if filename already exists in database
+              const existing = await req.payload.find({
+                collection: 'media',
+                where: {
+                  filename: { equals: finalFilename },
+                },
+                limit: 1,
+              })
+
+              if (existing.docs.length === 0) {
+                // Filename is unique, we can use it
+                break
+              }
+
+              // Filename collision - append suffix
+              attempt++
+              const nameParts = sanitizedName.split('.')
+              const extension = nameParts.length > 1 ? nameParts.pop() : ''
+              const baseName = nameParts.join('.')
+              finalFilename = extension
+                ? `${baseName}-${attempt}.${extension}`
+                : `${baseName}-${attempt}`
+            }
+
+            if (attempt >= maxAttempts) {
+              throw new Error('Unable to find unique filename after 100 attempts')
+            }
+
+            if (attempt > 0) {
+              console.log(`⚠️  Filename collision detected, using: ${finalFilename}`)
+            }
+
+            const mainFileKey = `media/${finalFilename}`
+
+            try {
+              // Use Uint8Array instead of Buffer for Miniflare compatibility
+              await bucket.put(mainFileKey, new Uint8Array(req.file.data), {
+                httpMetadata: {
+                  contentType: req.file.mimetype,
+                },
+              })
+              console.log(`✅ Main image uploaded to R2: ${mainFileKey}`)
+
+              // IMPORTANT: Update the filename in the data to match what we uploaded
+              // This ensures the database record matches the actual R2 file
+              data.filename = finalFilename
+            } catch (error) {
+              console.error('❌ Failed to upload main image to R2:', error)
+              throw error // Fail the upload if main image can't be saved
+            }
+          } else {
+            console.warn('⚠️  R2 bucket not found - main image will not be uploaded')
+          }
+
           // Detect runtime: Workers or Node.js
           const isWorkersRuntime = typeof process === 'undefined' ||
             (typeof globalThis !== 'undefined' && 'caches' in globalThis)
@@ -206,17 +282,12 @@ export const Media: CollectionConfig = {
             }
 
             // Upload thumbnails to R2
-            // Get cloudflare context from global (stored during config initialization)
-            const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
-            const bucket = cloudflare?.env?.R2
             if (bucket) {
-              console.log('📦 Found R2 bucket from cloudflare context')
+              console.log('📦 Uploading thumbnails to R2')
               const { uploadThumbnailsToR2 } = await import('@/lib/uploadThumbnails')
               thumbnails = await uploadThumbnailsToR2(thumbnails, bucket, 'media')
             } else {
-              console.warn('⚠️  R2 bucket not found - storing metadata only')
-              console.warn('Cloudflare context available:', !!cloudflare)
-              console.warn('Cloudflare env available:', !!cloudflare?.env)
+              console.warn('⚠️  R2 bucket not found - storing thumbnail metadata only')
               // Remove buffers from metadata if we can't upload
               thumbnails = thumbnails.map(t => {
                 const { buffer, ...rest } = t
