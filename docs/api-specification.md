@@ -457,6 +457,39 @@ Authorization: Bearer jwt_token
 }
 ```
 
+### Page Management
+
+#### Bulk Reorder Pages (`POST /api/reorder-pages`)
+
+Reorder pages within a chapter via drag-and-drop or other UI interactions. Updates `chapterPageNumber` for each page and automatically recalculates `globalPageNumber` across the entire comic.
+
+```json
+// Request
+POST /api/reorder-pages
+Authorization: Bearer jwt_token
+{
+  "chapterId": 2,
+  "pageIds": [15, 12, 14, 13] // New order (integer IDs)
+}
+
+// Response
+{
+  "message": "Pages reordered successfully",
+  "updatedPages": 4
+}
+```
+
+**Features:**
+- Updates `chapterPageNumber` based on array position (1-indexed: first page = 1, second = 2, etc.)
+- Automatically recalculates `globalPageNumber` for all affected pages via hooks
+- Atomic operation - all updates succeed or all fail
+- Permission checks:
+  - Admins and editors can reorder any pages
+  - Creators can only reorder pages in their own comics
+- Returns 400 if page IDs don't match the chapter
+- Returns 403 if user lacks permission
+- Returns 404 if chapter not found
+
 ### Batch Processing
 
 #### Bulk Create Pages (`POST /api/bulk-create-pages`)
