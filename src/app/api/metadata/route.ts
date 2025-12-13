@@ -52,7 +52,7 @@ export async function GET() {
   const metadata = {
     creditRoles: getNestedFieldOptions(Comics.fields, 'credits', 'role'),
     publishSchedules: getFieldOptions(Comics.fields, 'publishSchedule'),
-    genres: getFieldOptions(Comics.fields, 'genres'),
+    genres: getNestedFieldOptions(Comics.fields, 'genres', 'genre'),
     comicStatuses: getFieldOptions(Comics.fields, 'status'),
     pageStatuses: getFieldOptions(Pages.fields, 'status'),
   }

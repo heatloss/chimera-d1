@@ -303,6 +303,17 @@ export const Chapters: CollectionConfig = {
           try {
             const comicId = typeof doc.comic === 'object' ? doc.comic.id : doc.comic
 
+            // Get current comic to preserve existing stats
+            const comic = await req.payload.findByID({
+              collection: 'comics',
+              id: comicId,
+              req: {
+                ...req,
+                skipGlobalPageCalculation: true,
+                skipComicStatsCalculation: true,
+              } as any
+            })
+
             // Count chapters immediately
             const chapters = await req.payload.find({
               collection: 'chapters',
@@ -317,13 +328,15 @@ export const Chapters: CollectionConfig = {
               } as any
             })
 
-            // Update comic with chapter count
+            // Update comic with chapter count, preserving other stats
             await req.payload.update({
               collection: 'comics',
               id: comicId,
               data: {
                 stats: {
+                  totalPages: (comic as any).stats?.totalPages || 0,
                   totalChapters: chapters.totalDocs,
+                  lastPagePublished: (comic as any).stats?.lastPagePublished || null,
                 }
               },
               req: {

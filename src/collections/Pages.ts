@@ -578,12 +578,25 @@ export const Pages: CollectionConfig = {
       },
     ],
     afterChange: [
-      async ({ doc, operation }) => {
+      async ({ doc, operation, req }) => {
         // Log success message for user feedback
         if (operation === 'create') {
           console.log(`✅ Page ${doc.chapterPageNumber || 'unknown'} created successfully!`)
         } else if (operation === 'update') {
           console.log(`✅ Page ${doc.chapterPageNumber || 'unknown'} updated successfully!`)
+        }
+
+        // Update comic page statistics immediately and safely
+        // Only update page-related stats (totalPages, lastPagePublished)
+        // Guard: Skip if flag is set to prevent infinite loops
+        if (doc.comic && req.payload && !(req as any).skipComicStatsCalculation) {
+          try {
+            const comicId = typeof doc.comic === 'object' ? doc.comic.id : doc.comic
+            await updateComicPageStatistics(req.payload, comicId, req)
+          } catch (error) {
+            console.error('❌ Error updating comic page statistics:', error)
+            // Don't throw - let the main operation succeed
+          }
         }
       },
     ],
@@ -616,9 +629,22 @@ export const Pages: CollectionConfig = {
   timestamps: true,
 }
 
-// Safe immediate statistics update function
-async function updateComicStatisticsImmediate(payload: any, comicId: string, req: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+// Update ONLY page-related statistics (totalPages, lastPagePublished)
+// This function preserves chapter-related stats (totalChapters)
+// to prevent conflicts with the Chapters collection hook
+async function updateComicPageStatistics(payload: any, comicId: string, req: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
   try {
+    // Get current comic to preserve chapter stats
+    const comic = await payload.findByID({
+      collection: 'comics',
+      id: comicId,
+      req: {
+        ...req,
+        skipGlobalPageCalculation: true,
+        skipComicStatsCalculation: true,
+      } as any
+    })
+
     // Count published pages with guard clauses
     const pages = await payload.find({
       collection: 'pages',
@@ -627,20 +653,6 @@ async function updateComicStatisticsImmediate(payload: any, comicId: string, req
         status: { equals: 'published' },
       },
       limit: 1000,
-      req: {
-        ...req,
-        skipGlobalPageCalculation: true,
-        skipComicStatsCalculation: true, // Prevent loops
-      } as any
-    })
-
-    // Count chapters with guard clauses
-    const chapters = await payload.find({
-      collection: 'chapters',
-      where: {
-        comic: { equals: comicId },
-      },
-      limit: 100,
       req: {
         ...req,
         skipGlobalPageCalculation: true,
@@ -661,14 +673,14 @@ async function updateComicStatisticsImmediate(payload: any, comicId: string, req
       }
     }
 
-    // Update comic statistics with guard clauses
+    // Update comic with page stats, preserving chapter stats
     await payload.update({
       collection: 'comics',
       id: comicId,
       data: {
         stats: {
           totalPages: pages.totalDocs,
-          totalChapters: chapters.totalDocs,
+          totalChapters: comic.stats?.totalChapters || 0, // Preserve from Chapters hook
           lastPagePublished: lastPagePublished,
         }
       },
@@ -679,10 +691,10 @@ async function updateComicStatisticsImmediate(payload: any, comicId: string, req
       } as any,
     })
 
-    console.log(`📊 Updated comic statistics: ${pages.totalDocs} pages, ${chapters.totalDocs} chapters`)
+    console.log(`📄 Updated comic page statistics: ${pages.totalDocs} pages, last published: ${lastPagePublished ? new Date(lastPagePublished).toLocaleDateString() : 'never'}`)
     return true
   } catch (error) {
-    console.error('Error in updateComicStatisticsImmediate:', error)
+    console.error('Error in updateComicPageStatistics:', error)
     return false
   }
 }

@@ -1,9 +1,77 @@
 # API Specification Updates - December 2024
 
-**Date:** 2025-12-02
+## Update: 2025-12-04 - Genres/Tags Array Field Migration
+
+**Updated for:** hasMany field conversion to array fields
+
+### Summary
+
+Converted `genres` and `tags` fields from broken `hasMany: true` format to working `type: 'array'` format with nested fields.
+
+### Breaking Change
+
+**Data structure changed:**
+
+**Before (hasMany):**
+```json
+{
+  "genres": ["adventure", "comedy"],
+  "tags": ["webcomic", "lgbtq"]
+}
+```
+
+**After (array):**
+```json
+{
+  "genres": [
+    { "genre": "adventure" },
+    { "genre": "comedy" }
+  ],
+  "tags": [
+    { "tag": "webcomic" },
+    { "tag": "lgbtq" }
+  ]
+}
+```
+
+### Frontend Impact
+
+**Reading:**
+```javascript
+// Old
+const genreList = comic.genres  // ['adventure', 'comedy']
+
+// New
+const genreList = comic.genres.map(g => g.genre)  // ['adventure', 'comedy']
+```
+
+**Writing:**
+```javascript
+// Old
+await updateComic({ genres: ['adventure', 'comedy'] })
+
+// New
+await updateComic({
+  genres: ['adventure', 'comedy'].map(g => ({ genre: g }))
+})
+```
+
+### Reason for Change
+
+The `hasMany: true` option is broken in the D1 adapter:
+- Causes duplicate values on every save
+- Returns empty arrays via API even when data exists
+- Database schema mismatches
+
+Array fields work correctly and use the same storage pattern as other working fields (like `credits`).
+
+---
+
+## Update: 2025-12-02 - DELETE Bug Resolution
+
 **Updated for:** Payload v3.65.0
 
-## Summary of Changes
+### Summary
 
 Updated `docs/api-specification.md` to reflect the resolution of the DELETE bug and removal of workaround endpoints.
 

@@ -46,7 +46,7 @@ async function testDelete() {
       })
       console.log('⚠️  Page still accessible through Payload API!')
       console.log('Page data:', JSON.stringify(afterDelete, null, 2))
-    } catch (error) {
+    } catch (error: any) {
       console.log('✅ Page not found through Payload API (expected)')
       console.log('Error:', error.message)
     }
@@ -54,10 +54,10 @@ async function testDelete() {
     // Check if it still exists in database with raw query
     console.log('\n🔍 Checking raw database...')
     const db = payload.db.drizzle
-    const result = await db.execute(`SELECT * FROM pages WHERE id = ${createdPage.id}`)
+    const result = await db.run(`SELECT * FROM pages WHERE id = ${createdPage.id}`)
     console.log('Raw database query result:', JSON.stringify(result, null, 2))
 
-    if (result.length > 0 || (result as any).results?.length > 0) {
+    if ((result as any).results?.length > 0) {
       console.log('❌ FOUND: Page still exists in database after delete!')
     } else {
       console.log('✅ Page successfully deleted from database')

@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
             authorNotes: pageData.authorNotes || '',
             status: 'draft',
             // Don't set chapterPageNumber - let the hook auto-assign it
-          },
+          } as any,
           user, // Pass user context for access control and hooks
         });
 

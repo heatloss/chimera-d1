@@ -136,8 +136,15 @@ Webcomic series management.
   ],
   "status": "draft|live|hiatus|completed",
   "publishSchedule": "daily|weekly|twice-weekly|monthly|irregular|completed|hiatus",
-  "genres": ["adventure", "comedy", "fantasy"],
-  "tags": ["custom", "tags", "here"],
+  "genres": [
+    { "genre": "adventure" },
+    { "genre": "comedy" },
+    { "genre": "fantasy" }
+  ],
+  "tags": [
+    { "tag": "webcomic" },
+    { "tag": "lgbtq" }
+  ],
   "isNSFW": false,
   "createdAt": "2024-01-01T00:00:00Z",
   "updatedAt": "2024-01-15T10:30:00Z"

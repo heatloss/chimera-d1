@@ -30,7 +30,6 @@ async function testDrizzleDelete() {
     // Step 2: Verify it exists in D1
     console.log('Step 2: Verifying in database...')
     const db = payload.db
-    // @ts-expect-error - accessing internal drizzle instance
     const beforeCheck = await db.drizzle.run(`SELECT id, title FROM pages WHERE id = ${testId}`)
     console.log('Before delete:', JSON.stringify(beforeCheck, null, 2))
 
@@ -44,7 +43,6 @@ async function testDrizzleDelete() {
 
     // Step 4: Check if actually deleted from D1
     console.log('\nStep 4: Checking if actually deleted from D1...')
-    // @ts-expect-error - accessing internal drizzle instance
     const afterCheck = await db.drizzle.run(`SELECT id, title FROM pages WHERE id = ${testId}`)
     console.log('After delete:', JSON.stringify(afterCheck, null, 2))
 

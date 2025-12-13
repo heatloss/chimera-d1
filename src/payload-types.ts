@@ -197,40 +197,47 @@ export interface Comic {
    * Select all genres that apply to your comic
    */
   genres?:
-    | (
-        | 'action-adventure'
-        | 'alternate-history'
-        | 'comedy'
-        | 'cyberpunk'
-        | 'drama'
-        | 'dystopian'
-        | 'educational'
-        | 'erotica'
-        | 'fairytale'
-        | 'fan-comic'
-        | 'fantasy'
-        | 'historical'
-        | 'horror'
-        | 'magical-girl'
-        | 'mystery'
-        | 'nonfiction'
-        | 'parody'
-        | 'post-apocalyptic'
-        | 'romance'
-        | 'satire'
-        | 'sci-fi'
-        | 'slice-of-life'
-        | 'sports'
-        | 'steampunk'
-        | 'superhero'
-        | 'urban-fantasy'
-        | 'western'
-      )[]
+    | {
+        genre:
+          | 'action-adventure'
+          | 'alternate-history'
+          | 'comedy'
+          | 'cyberpunk'
+          | 'drama'
+          | 'dystopian'
+          | 'educational'
+          | 'erotica'
+          | 'fairytale'
+          | 'fan-comic'
+          | 'fantasy'
+          | 'historical'
+          | 'horror'
+          | 'magical-girl'
+          | 'mystery'
+          | 'nonfiction'
+          | 'parody'
+          | 'post-apocalyptic'
+          | 'romance'
+          | 'satire'
+          | 'sci-fi'
+          | 'slice-of-life'
+          | 'sports'
+          | 'steampunk'
+          | 'superhero'
+          | 'urban-fantasy'
+          | 'western';
+        id?: string | null;
+      }[]
     | null;
   /**
    * Custom tags for better searchability (e.g., "lgbtq", "anthropomorphic", "noir")
    */
-  tags?: string[] | null;
+  tags?:
+    | {
+        tag: string;
+        id?: string | null;
+      }[]
+    | null;
   /**
    * Check if this comic contains mature/adult content
    */
@@ -600,8 +607,18 @@ export interface ComicsSelect<T extends boolean = true> {
       };
   status?: T;
   publishSchedule?: T;
-  genres?: T;
-  tags?: T;
+  genres?:
+    | T
+    | {
+        genre?: T;
+        id?: T;
+      };
+  tags?:
+    | T
+    | {
+        tag?: T;
+        id?: T;
+      };
   isNSFW?: T;
   seoMeta?:
     | T

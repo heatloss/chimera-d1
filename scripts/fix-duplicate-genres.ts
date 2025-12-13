@@ -26,7 +26,6 @@ async function fixDuplicateGenres() {
     for (const comic of comics.docs) {
       // Get raw genre data from database
       const db = payload.db
-      // @ts-expect-error - accessing internal drizzle instance
       const genresResult = await db.drizzle.run(
         `SELECT value FROM comics_genres WHERE parent_id = ${comic.id}`
       )
@@ -47,17 +46,15 @@ async function fixDuplicateGenres() {
         console.log(`    Removing duplicates...`)
 
         // Delete all genres for this comic
-        // @ts-expect-error - accessing internal drizzle instance
         await db.drizzle.run(
           `DELETE FROM comics_genres WHERE parent_id = ${comic.id}`
         )
 
         // Re-insert only unique values
         for (const genre of uniqueGenres) {
-          // @ts-expect-error - accessing internal drizzle instance
+          const order = uniqueGenres.indexOf(genre) + 1
           await db.drizzle.run(
-            `INSERT INTO comics_genres (parent_id, value, "order") VALUES (?, ?, ?)`,
-            [comic.id, genre, uniqueGenres.indexOf(genre) + 1]
+            `INSERT INTO comics_genres (parent_id, value, "order") VALUES (${comic.id}, '${genre}', ${order})`
           )
         }
 

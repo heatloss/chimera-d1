@@ -354,7 +354,44 @@ Consider using **PostgreSQL on Neon or Supabase** instead of D1.
 - [SQLite ALTER TABLE Limitations](https://www.sqlite.org/lang_altertable.html)
 - [Drizzle ORM Migrations](https://orm.drizzle.team/docs/migrations)
 
+## hasMany Fields Don't Work
+
+**Issue:** Payload CMS's `hasMany: true` option for select and text fields is broken in the D1 adapter.
+
+**Symptoms:**
+- Duplicate values accumulate on every save
+- API returns empty arrays even when data exists in database
+- Database queries fail with schema mismatches
+
+**Resolution:**
+Use `type: 'array'` with nested fields instead of `hasMany: true`:
+
+```typescript
+// ❌ DON'T USE (broken)
+{
+  name: 'genres',
+  type: 'select',
+  hasMany: true,
+  options: [...]
+}
+
+// ✅ USE THIS (works correctly)
+{
+  name: 'genres',
+  type: 'array',
+  fields: [
+    { name: 'genre', type: 'select', required: true, options: [...] }
+  ]
+}
+```
+
+**Data structure difference:**
+- hasMany format: `['value1', 'value2']`
+- Array format: `[{genre: 'value1'}, {genre: 'value2'}]`
+
+Frontend code needs to adjust accordingly: `comic.genres.map(g => g.genre)`
+
 ---
 
-**Last Updated:** 2025-11-25
+**Last Updated:** 2025-12-04
 **Status:** Production-ready with documented limitations

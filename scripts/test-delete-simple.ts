@@ -35,7 +35,7 @@ async function testPayloadDelete() {
     return
   }
 
-  const createdPage = await createResponse.json()
+  const createdPage = await createResponse.json() as any
   const testPageId = createdPage.doc.id
   console.log(`✅ Created test page with ID: ${testPageId}\n`)
 

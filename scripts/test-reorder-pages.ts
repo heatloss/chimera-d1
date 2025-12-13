@@ -26,8 +26,8 @@ async function testReorderPages() {
       sort: 'order'
     })
 
-    let testChapter = null
-    let originalPages = []
+    let testChapter: any = null
+    let originalPages: any[] = []
 
     for (const chapter of chapters.docs) {
       const pages = await payload.find({
