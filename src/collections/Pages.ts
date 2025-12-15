@@ -1,7 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 // Helper hook to normalize string IDs to integers for D1 adapter compatibility
-const normalizeRelationshipId = ({ value }) => {
+const normalizeRelationshipId = ({ value }: { value?: any }) => {
   if (value && typeof value === 'string') {
     return parseInt(value, 10)
   }

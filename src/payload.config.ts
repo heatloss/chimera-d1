@@ -13,6 +13,8 @@ import { Media } from './collections/Media'
 import { Comics } from './collections/Comics'
 import { Chapters } from './collections/Chapters'
 import { Pages } from './collections/Pages'
+import { Genres } from './collections/Genres'
+import { Tags } from './collections/Tags'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -39,7 +41,7 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users, Comics, Chapters, Pages, Media],
+  collections: [Users, Comics, Chapters, Pages, Media, Genres, Tags],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {

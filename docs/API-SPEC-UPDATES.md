@@ -1,5 +1,118 @@
 # API Specification Updates - December 2024
 
+## Update: 2025-12-15 - Genres and Tags Collections Migration
+
+**Updated for:** Genres and tags promoted to full collections
+
+### Summary
+
+Genres and tags have been migrated from embedded array fields to their own dedicated collections. The `/api/metadata` endpoint now returns dynamic data from these collections with **integer IDs** instead of static string values.
+
+### Breaking Changes
+
+**1. Comics data structure changed:**
+
+**Before:**
+```json
+{
+  "genres": [
+    { "genre": "adventure" },
+    { "genre": "comedy" }
+  ],
+  "tags": [
+    { "tag": "webcomic" },
+    { "tag": "lgbtq" }
+  ]
+}
+```
+
+**After:**
+```json
+{
+  "genres": [1, 2],  // Integer IDs (or full objects with depth > 0)
+  "tags": [3, 4]     // Integer IDs (or full objects with depth > 0)
+}
+```
+
+**2. Metadata endpoint values changed:**
+
+**Before:**
+```json
+{
+  "genres": [
+    { "label": "Action-Adventure", "value": "action-adventure" }
+  ]
+}
+```
+
+**After:**
+```json
+{
+  "genres": [
+    { "label": "Action", "value": 1 }
+  ],
+  "tags": [
+    { "label": "LGBTQ+", "value": 1 }
+  ]
+}
+```
+
+### New Collections
+
+Two new collections are now available via the API:
+
+- `GET /api/genres` - List all genres
+- `GET /api/tags` - List all tags
+
+Both collections support CRUD operations with the following permissions:
+- **Read**: Public (everyone can read)
+- **Create/Update**: Admin and Editor only
+- **Delete**: Admin only
+
+### Frontend Impact
+
+**Reading comics:**
+```javascript
+// Old - embedded arrays
+const genreNames = comic.genres.map(g => g.genre)
+
+// New - use depth parameter to get full objects
+const comic = await fetch('/api/comics/1?depth=1')
+const genreNames = comic.genres.map(g => g.name)
+```
+
+**Writing comics:**
+```javascript
+// Old - embedded arrays
+await updateComic({
+  genres: [{ genre: 'adventure' }, { genre: 'comedy' }]
+})
+
+// New - pass integer IDs
+await updateComic({
+  genres: [1, 2]  // Genre IDs from /api/metadata or /api/genres
+})
+```
+
+**Using metadata for dropdowns:**
+```javascript
+// Old - string values
+const genreOptions = metadata.genres  // [{ label: "Action", value: "action" }]
+const selectedGenres = ['action', 'comedy']
+
+// New - integer IDs
+const genreOptions = metadata.genres  // [{ label: "Action", value: 1 }]
+const selectedGenres = [1, 2]  // Integer IDs
+```
+
+### Documentation Updated
+
+1. **Comics Data Structure** - Updated to show `hasMany` relationship format with integer IDs
+2. **Metadata Endpoint** - Updated to show dynamic genres/tags with integer IDs
+3. **New Sections** - Added Genres and Tags collection documentation
+
+---
+
 ## Update: 2025-12-04 - Genres/Tags Array Field Migration
 
 **Updated for:** hasMany field conversion to array fields

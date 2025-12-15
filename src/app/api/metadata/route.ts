@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { getPayload } from 'payload'
+import config from '@payload-config'
 import { Comics } from '@/collections/Comics'
 import { Pages } from '@/collections/Pages'
 import type { Field, Option } from 'payload'
@@ -44,15 +46,24 @@ function getNestedFieldOptions(fields: Field[], arrayFieldName: string, nestedFi
 /**
  * GET /api/metadata
  * Returns all metadata options for comics, pages, and related entities.
- * Dynamically reads options from Payload collection configs.
+ * Dynamically reads options from Payload collection configs and database.
  * This is used by the frontend to populate dropdown menus and selectors.
  * No authentication required - these are static configuration values.
  */
 export async function GET() {
+  const payload = await getPayload({ config })
+
+  // Query genres and tags from their collections
+  const [genresResult, tagsResult] = await Promise.all([
+    payload.find({ collection: 'genres', limit: 100, sort: 'name' }),
+    payload.find({ collection: 'tags', limit: 200, sort: 'name' }),
+  ])
+
   const metadata = {
     creditRoles: getNestedFieldOptions(Comics.fields, 'credits', 'role'),
     publishSchedules: getFieldOptions(Comics.fields, 'publishSchedule'),
-    genres: getNestedFieldOptions(Comics.fields, 'genres', 'genre'),
+    genres: genresResult.docs.map((g) => ({ label: g.name, value: g.id })),
+    tags: tagsResult.docs.map((t) => ({ label: t.name, value: t.id })),
     comicStatuses: getFieldOptions(Comics.fields, 'status'),
     pageStatuses: getFieldOptions(Pages.fields, 'status'),
   }

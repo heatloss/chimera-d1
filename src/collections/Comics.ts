@@ -1,7 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 // Helper hook to normalize string IDs to integers for D1 adapter compatibility
-const normalizeRelationshipId = ({ value }: { value: any }) => {
+const normalizeRelationshipId = ({ value }: { value?: any }) => {
   if (value && typeof value === 'string') {
     return parseInt(value, 10)
   }
@@ -213,62 +213,23 @@ export const Comics: CollectionConfig = {
     },
     {
       name: 'genres',
-      type: 'array',
+      type: 'relationship',
+      relationTo: 'genres',
+      hasMany: true,
       label: 'Genres',
-      fields: [
-        {
-          name: 'genre',
-          type: 'select',
-          required: true,
-          options: [
-            { label: 'Action-Adventure', value: 'action-adventure' },
-            { label: 'Alternate History', value: 'alternate-history' },
-            { label: 'Comedy', value: 'comedy' },
-            { label: 'Cyberpunk', value: 'cyberpunk' },
-            { label: 'Drama', value: 'drama' },
-            { label: 'Dystopian', value: 'dystopian' },
-            { label: 'Educational', value: 'educational' },
-            { label: 'Erotica', value: 'erotica' },
-            { label: 'Fairytale', value: 'fairytale' },
-            { label: 'Fan Comic', value: 'fan-comic' },
-            { label: 'Fantasy', value: 'fantasy' },
-            { label: 'Historical', value: 'historical' },
-            { label: 'Horror', value: 'horror' },
-            { label: 'Magical Girl', value: 'magical-girl' },
-            { label: 'Mystery', value: 'mystery' },
-            { label: 'Nonfiction', value: 'nonfiction' },
-            { label: 'Parody', value: 'parody' },
-            { label: 'Post-Apocalyptic', value: 'post-apocalyptic' },
-            { label: 'Romance', value: 'romance' },
-            { label: 'Satire', value: 'satire' },
-            { label: 'Sci-Fi', value: 'sci-fi' },
-            { label: 'Slice of Life', value: 'slice-of-life' },
-            { label: 'Sports', value: 'sports' },
-            { label: 'Steampunk', value: 'steampunk' },
-            { label: 'Superhero', value: 'superhero' },
-            { label: 'Urban Fantasy', value: 'urban-fantasy' },
-            { label: 'Western', value: 'western' },
-          ],
-        },
-      ],
       admin: {
         description: 'Select all genres that apply to your comic',
       },
     },
     {
       name: 'tags',
-      type: 'array',
+      type: 'relationship',
+      relationTo: 'tags',
+      hasMany: true,
       label: 'Tags',
-      fields: [
-        {
-          name: 'tag',
-          type: 'text',
-          required: true,
-        },
-      ],
       admin: {
         description:
-          'Custom tags for better searchability (e.g., "lgbtq", "anthropomorphic", "noir")',
+          'Tags for better searchability (e.g., "LGBTQ+", "Anthropomorphic", "Noir")',
       },
     },
     {

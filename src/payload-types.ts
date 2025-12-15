@@ -72,6 +72,8 @@ export interface Config {
     chapters: Chapter;
     pages: Page;
     media: Media;
+    genres: Genre;
+    tags: Tag;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -84,6 +86,8 @@ export interface Config {
     chapters: ChaptersSelect<false> | ChaptersSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
+    genres: GenresSelect<false> | GenresSelect<true>;
+    tags: TagsSelect<false> | TagsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -196,48 +200,11 @@ export interface Comic {
   /**
    * Select all genres that apply to your comic
    */
-  genres?:
-    | {
-        genre:
-          | 'action-adventure'
-          | 'alternate-history'
-          | 'comedy'
-          | 'cyberpunk'
-          | 'drama'
-          | 'dystopian'
-          | 'educational'
-          | 'erotica'
-          | 'fairytale'
-          | 'fan-comic'
-          | 'fantasy'
-          | 'historical'
-          | 'horror'
-          | 'magical-girl'
-          | 'mystery'
-          | 'nonfiction'
-          | 'parody'
-          | 'post-apocalyptic'
-          | 'romance'
-          | 'satire'
-          | 'sci-fi'
-          | 'slice-of-life'
-          | 'sports'
-          | 'steampunk'
-          | 'superhero'
-          | 'urban-fantasy'
-          | 'western';
-        id?: string | null;
-      }[]
-    | null;
+  genres?: (number | Genre)[] | null;
   /**
-   * Custom tags for better searchability (e.g., "lgbtq", "anthropomorphic", "noir")
+   * Tags for better searchability (e.g., "LGBTQ+", "Anthropomorphic", "Noir")
    */
-  tags?:
-    | {
-        tag: string;
-        id?: string | null;
-      }[]
-    | null;
+  tags?: (number | Tag)[] | null;
   /**
    * Check if this comic contains mature/adult content
    */
@@ -315,6 +282,48 @@ export interface Media {
   filesize?: number | null;
   width?: number | null;
   height?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "genres".
+ */
+export interface Genre {
+  id: number;
+  /**
+   * Display name for the genre (e.g., "Action-Adventure")
+   */
+  name: string;
+  /**
+   * URL-friendly identifier (e.g., "action-adventure")
+   */
+  slug: string;
+  /**
+   * Optional description of the genre
+   */
+  description?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "tags".
+ */
+export interface Tag {
+  id: number;
+  /**
+   * Display name for the tag (e.g., "LGBTQ+")
+   */
+  name: string;
+  /**
+   * URL-friendly identifier (e.g., "lgbtq")
+   */
+  slug: string;
+  /**
+   * Optional description of the tag
+   */
+  description?: string | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * Organize comic pages into chapters. Order is currently read-only - use the Move Chapter API endpoint to reorder chapters without conflicts.
@@ -520,6 +529,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'media';
         value: number | Media;
+      } | null)
+    | ({
+        relationTo: 'genres';
+        value: number | Genre;
+      } | null)
+    | ({
+        relationTo: 'tags';
+        value: number | Tag;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -607,18 +624,8 @@ export interface ComicsSelect<T extends boolean = true> {
       };
   status?: T;
   publishSchedule?: T;
-  genres?:
-    | T
-    | {
-        genre?: T;
-        id?: T;
-      };
-  tags?:
-    | T
-    | {
-        tag?: T;
-        id?: T;
-      };
+  genres?: T;
+  tags?: T;
   isNSFW?: T;
   seoMeta?:
     | T
@@ -738,6 +745,28 @@ export interface MediaSelect<T extends boolean = true> {
   filesize?: T;
   width?: T;
   height?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "genres_select".
+ */
+export interface GenresSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  description?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "tags_select".
+ */
+export interface TagsSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  description?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

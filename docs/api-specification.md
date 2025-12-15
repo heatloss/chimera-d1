@@ -135,19 +135,29 @@ Webcomic series management.
     }
   ],
   "status": "draft|live|hiatus|completed",
-  "publishSchedule": "daily|weekly|twice-weekly|monthly|irregular|completed|hiatus",
-  "genres": [
-    { "genre": "adventure" },
-    { "genre": "comedy" },
-    { "genre": "fantasy" }
-  ],
-  "tags": [
-    { "tag": "webcomic" },
-    { "tag": "lgbtq" }
-  ],
+  "publishSchedule": "daily|weekly|twice-weekly|monthly|irregular|completed|inactive",
+  "genres": [1, 2, 3], // Integer IDs from genres collection (or full objects if populated)
+  "tags": [1, 4], // Integer IDs from tags collection (or full objects if populated)
   "isNSFW": false,
   "createdAt": "2024-01-01T00:00:00Z",
   "updatedAt": "2024-01-15T10:30:00Z"
+}
+```
+
+**Note on Genres and Tags:** These fields are `hasMany` relationships to the `genres` and `tags` collections. By default, the API returns an array of integer IDs. Use `?depth=1` or higher to populate the full genre/tag objects:
+
+```json
+// With depth=1 or higher
+{
+  "genres": [
+    { "id": 1, "name": "Action", "slug": "action" },
+    { "id": 2, "name": "Adventure", "slug": "adventure" },
+    { "id": 3, "name": "Comedy", "slug": "comedy" }
+  ],
+  "tags": [
+    { "id": 1, "name": "LGBTQ+", "slug": "lgbtq" },
+    { "id": 4, "name": "Webcomic", "slug": "webcomic" }
+  ]
 }
 ```
 
@@ -248,6 +258,56 @@ User management with role-based profiles.
   "role": "creator|editor|admin|reader",
   "createdAt": "2024-01-01T00:00:00Z",
   "updatedAt": "2024-01-20T14:22:00Z"
+}
+```
+
+### Genres (`/genres`)
+
+Genre taxonomy for categorizing comics. Managed by admins/editors and referenced by comics via relationships.
+
+#### Endpoints
+
+- `GET /api/genres` - List all genres (public, sorted by name)
+- `POST /api/genres` - Create new genre (admin/editor only)
+- `GET /api/genres/:id` - Get specific genre
+- `PATCH /api/genres/:id` - Update genre (admin/editor only)
+- `DELETE /api/genres/:id` - Delete genre (admin only)
+
+#### Data Structure
+
+```json
+{
+  "id": 1,
+  "name": "Action",
+  "slug": "action",
+  "description": "Fast-paced stories with physical conflict and excitement",
+  "createdAt": "2024-01-01T00:00:00Z",
+  "updatedAt": "2024-01-01T00:00:00Z"
+}
+```
+
+### Tags (`/tags`)
+
+Tag taxonomy for additional comic categorization and searchability. Managed by admins/editors and referenced by comics via relationships.
+
+#### Endpoints
+
+- `GET /api/tags` - List all tags (public, sorted by name)
+- `POST /api/tags` - Create new tag (admin/editor only)
+- `GET /api/tags/:id` - Get specific tag
+- `PATCH /api/tags/:id` - Update tag (admin/editor only)
+- `DELETE /api/tags/:id` - Delete tag (admin only)
+
+#### Data Structure
+
+```json
+{
+  "id": 1,
+  "name": "LGBTQ+",
+  "slug": "lgbtq",
+  "description": "Stories featuring LGBTQ+ characters or themes",
+  "createdAt": "2024-01-01T00:00:00Z",
+  "updatedAt": "2024-01-01T00:00:00Z"
 }
 ```
 
@@ -399,7 +459,9 @@ Authorization: Bearer jwt_token (optional - affects access to unpublished conten
 
 #### Get Metadata Options (`GET /api/metadata`)
 
-Retrieve all available metadata options for comics and pages. This endpoint returns static configuration values used to populate dropdown menus and selectors in the frontend. No authentication required.
+Retrieve all available metadata options for comics and pages. This endpoint returns configuration values used to populate dropdown menus and selectors in the frontend. No authentication required.
+
+**Note:** As of December 2024, genres and tags are now stored in their own collections and return **integer IDs** rather than string values. This allows dynamic management of genres/tags through the admin interface.
 
 ```json
 // Request
@@ -410,17 +472,23 @@ GET /api/metadata
   "creditRoles": [
     { "label": "Writer", "value": "writer" },
     { "label": "Artist", "value": "artist" },
-    // ... 8 total role options
+    // ... 8 total role options (static)
   ],
   "publishSchedules": [
     { "label": "Daily", "value": "daily" },
     { "label": "Weekly", "value": "weekly" },
-    // ... 7 total schedule options
+    // ... 7 total schedule options (static)
   ],
   "genres": [
-    { "label": "Action-Adventure", "value": "action-adventure" },
-    { "label": "Comedy", "value": "comedy" },
-    // ... 27 total genre options
+    { "label": "Action", "value": 1 },
+    { "label": "Adventure", "value": 2 },
+    { "label": "Comedy", "value": 3 },
+    // ... dynamic from genres collection (integer IDs)
+  ],
+  "tags": [
+    { "label": "LGBTQ+", "value": 1 },
+    { "label": "Webcomic", "value": 2 },
+    // ... dynamic from tags collection (integer IDs)
   ],
   "comicStatuses": [
     { "label": "Draft/Hidden", "value": "draft" },
@@ -438,8 +506,9 @@ GET /api/metadata
 
 **Features:**
 - No authentication required (public configuration data)
-- Returns all available options for credit roles, publishing schedules, genres, and statuses
-- Can be cached on frontend since values are static
+- Returns all available options for credit roles, publishing schedules, genres, tags, and statuses
+- **Genres and Tags are dynamic** - fetched from their respective collections (can be managed via admin)
+- Credit roles, schedules, and statuses remain static configuration values
 - Used to populate dropdown menus and multi-select components
 
 ### Chapter Management
