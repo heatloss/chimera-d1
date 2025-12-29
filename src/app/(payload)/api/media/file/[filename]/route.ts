@@ -11,10 +11,7 @@ export async function GET(
   try {
     const { filename } = await params
 
-    // Dynamically import config to ensure Cloudflare context is initialized
-    await import('@/payload.config')
-
-    // Get R2 bucket from global context (set by payload.config.ts)
+    // Get R2 bucket from global context (set in payload.config.ts)
     const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
     const bucket = cloudflare?.env?.R2
 
