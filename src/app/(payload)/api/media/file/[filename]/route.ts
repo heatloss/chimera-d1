@@ -3,7 +3,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getCloudflareContext } from '@opennextjs/cloudflare'
+// Import config to ensure Cloudflare context is initialized
+import '@/payload.config'
 
 export async function GET(
   request: NextRequest,
@@ -12,8 +13,8 @@ export async function GET(
   try {
     const { filename } = await params
 
-    // Get R2 bucket from Cloudflare context
-    const cloudflare = await getCloudflareContext()
+    // Get R2 bucket from global context (set by payload.config.ts)
+    const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
     const bucket = cloudflare?.env?.R2
 
     if (!bucket) {
