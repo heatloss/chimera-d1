@@ -52,12 +52,14 @@ export default buildConfig({
     'http://localhost:8888', // Frontend dev server
     'http://localhost:3333', // API dev server
     'http://localhost:3000', // Default Next.js port (fallback)
+    'https://cms.chimeracomics.org', // Production frontend
   ],
   // CSRF protection configuration
   csrf: [
     'http://localhost:3333',
     'http://localhost:8888',
     'http://localhost:3000',
+    'https://cms.chimeracomics.org',
   ],
   // database-adapter-config-start
   db: sqliteD1Adapter({

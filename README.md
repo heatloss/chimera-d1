@@ -140,15 +140,19 @@ Edit `wrangler.jsonc` to configure D1 database and R2 bucket bindings:
 
 ```jsonc
 {
-  "d1_databases": [{
-    "binding": "D1",
-    "database_name": "chimera-d1",
-    "database_id": "your-database-id"
-  }],
-  "r2_buckets": [{
-    "binding": "R2",
-    "bucket_name": "chimera-d1"
-  }]
+  "d1_databases": [
+    {
+      "binding": "D1",
+      "database_name": "chimera-d1",
+      "database_id": "your-database-id",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "chimera-d1",
+    },
+  ],
 }
 ```
 
@@ -244,8 +248,8 @@ pnpm payload migrate
 
 ## Production URLs
 
-- **API**: https://chimera-d1.mike-17c.workers.dev
-- **Admin Panel**: https://chimera-d1.mike-17c.workers.dev/admin
+- **API**: https://api.chimeracomics.org
+- **Admin Panel**: https://api.chimeracomics.org/admin
 
 ## License
 

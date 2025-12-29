@@ -1,0 +1,39 @@
+Sample YAML file:
+
+name: Deploy Site
+on:
+  # 1. Trigger manually via CMS Webhook
+  repository_dispatch:
+    types: [ cms-publish ]
+  # 2. Trigger on code push (optional)
+  push:
+    branches: [ main ]
+
+# Prevent "Build Fatigue" (Debouncing)
+concurrency: 
+  group: production-deployment
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Eleventy
+        run: npx @11ty/eleventy
+        # Note: Output defaults to ./_site
+
+      - name: Zip and Ship
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: node scripts/deploy-to-host.js
