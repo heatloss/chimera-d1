@@ -4,8 +4,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-// Import config to ensure Cloudflare context is initialized
-import '@/payload.config'
 
 export async function GET(
   request: NextRequest,
@@ -13,6 +11,9 @@ export async function GET(
 ) {
   try {
     const { filename } = await params
+
+    // Dynamically import config to ensure Cloudflare context is initialized
+    await import('@/payload.config')
 
     // Get R2 bucket from global context (set by payload.config.ts)
     const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
