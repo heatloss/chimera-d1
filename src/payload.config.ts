@@ -52,6 +52,7 @@ export default buildConfig({
     'http://localhost:8888', // Frontend dev server
     'http://localhost:3333', // API dev server
     'http://localhost:3000', // Default Next.js port (fallback)
+    'https://api.chimeracomics.org', // Production API/admin
     'https://cms.chimeracomics.org', // Production frontend
   ],
   // CSRF protection configuration
@@ -59,6 +60,7 @@ export default buildConfig({
     'http://localhost:3333',
     'http://localhost:8888',
     'http://localhost:3000',
+    'https://api.chimeracomics.org',
     'https://cms.chimeracomics.org',
   ],
   // database-adapter-config-start
