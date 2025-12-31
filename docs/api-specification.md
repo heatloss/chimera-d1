@@ -4,7 +4,7 @@
 
 A webcomic content management system built on Payload CMS v3, deployed on Cloudflare Workers with D1 database and R2 storage. This API provides complete backend functionality for managing webcomic series, chapters, pages, users, and media assets with role-based access control.
 
-**Current Version**: December 2024 (Payload v3.65.0)
+**Current Version**: December 2024 (Payload v3.69.0)
 
 ## Base URLs
 
@@ -221,7 +221,6 @@ Organizational containers for comic pages, grouped by story arcs or sections.
 - `PATCH /api/chapters/:id` - Update chapter
 - `DELETE /api/chapters/:id` - Delete chapter (admin only)
 - `POST /api/reorder-chapters` - Reorder chapters (see Custom Endpoints)
-- `GET /api/chapters-by-comic/:comicId` - **Workaround endpoint** (see Known Issues)
 
 #### Data Structure
 
@@ -389,10 +388,12 @@ These endpoints extend Payload's built-in functionality with custom business log
 
 Retrieve a complete comic with all its chapters and each chapter's pages in a single request. Optimal for frontend applications that need to render a complete comic reader interface.
 
+**Authentication Required**: Users can only access comics they own. Admins and editors can access all comics.
+
 ```json
 // Request
 GET /api/comic-with-chapters/1
-Authorization: Bearer jwt_token (optional - affects access to unpublished content)
+Authorization: Bearer jwt_token
 
 // Response
 {
@@ -453,7 +454,8 @@ Authorization: Bearer jwt_token (optional - affects access to unpublished conten
 - Returns complete nested structure in one request
 - Chapters are sorted by `order` field
 - Pages within each chapter are sorted by `chapterPageNumber`
-- Respects user permissions (unpublished content filtered for non-creators)
+- Returns 401 if not authenticated
+- Returns 403 if user doesn't own the comic (unless admin/editor)
 
 ### Metadata Options
 
@@ -809,8 +811,12 @@ Chimera CMS uses a dual numbering system for comic pages:
 ### CORS Configuration
 
 - CORS headers configured for cross-origin requests
-- Currently set to allow `http://localhost:8888` for frontend development
-- CORS configuration will need to be updated when frontend is deployed to production domain
+- Allowed origins:
+  - `http://localhost:8888` - Frontend dev server
+  - `http://localhost:3333` - API dev server
+  - `http://localhost:3000` - Default Next.js port (fallback)
+  - `https://api.chimeracomics.org` - Production API
+  - `https://cms.chimeracomics.org` - Production frontend
 
 ## Frontend Implementation Tips
 
@@ -894,23 +900,16 @@ Chimera CMS uses a dual numbering system for comic pages:
 
 **Impact**: Schema changes require manual migration scripts and careful testing.
 
-## Alternative Endpoints
-
-Several custom endpoints provide convenience features or work around remaining D1 adapter limitations:
-
-#### Get Chapters by Comic ID
-```javascript
-GET /api/chapters-by-comic/:comicId
-```
-**Note**: Standard Payload endpoint should work, this is a convenience wrapper.
-
-#### Get Pages by Comic ID
-```javascript
-GET /api/pages-by-comic/:comicId?limit=20&page=1
-```
-**Note**: Standard Payload endpoint should work, this is a convenience wrapper.
-
 ## Migration Notes
+
+### Late December 2024 Update (v3.69.0)
+- Upgraded to Payload v3.69.0
+- **Security Fix**: Added authentication requirement to `/api/comic-with-chapters/:id` endpoint
+  - Now returns 401 if not authenticated
+  - Returns 403 if user doesn't own the comic (unless admin/editor)
+- **Removed obsolete endpoints**: `/api/chapters-by-comic/:comicId` and `/api/pages-by-comic/:comicId`
+  - These were workarounds for an OpenNext issue that has been fixed
+  - Use standard Payload endpoints instead: `GET /api/chapters?where[comic][equals]=:id`
 
 ### December 2024 Update (v3.65.0)
 - **MAJOR FIX**: Upgraded to Payload v3.65.0 which includes Drizzle ORM v0.44.7

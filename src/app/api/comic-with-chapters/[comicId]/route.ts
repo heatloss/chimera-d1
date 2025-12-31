@@ -26,6 +26,16 @@ export async function GET(
 
     const payload = await getPayload({ config })
 
+    // Get authenticated user
+    const { user } = await payload.auth({ headers: request.headers })
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401, headers: getCorsHeaders() }
+      )
+    }
+
     // Query by integer ID
     const comic = await payload.findByID({
       collection: 'comics',
@@ -38,6 +48,17 @@ export async function GET(
         { error: 'Comic not found' },
         { status: 404, headers: getCorsHeaders() }
       )
+    }
+
+    // Verify user has access to this comic (unless admin/editor)
+    if (user.role !== 'admin' && user.role !== 'editor') {
+      const authorId = typeof comic.author === 'object' ? comic.author?.id : comic.author
+      if (authorId !== user.id) {
+        return NextResponse.json(
+          { error: 'You do not have permission to access this comic' },
+          { status: 403, headers: getCorsHeaders() }
+        )
+      }
     }
 
     // Get all chapters for this comic, ordered by chapter order
