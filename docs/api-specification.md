@@ -639,12 +639,21 @@ file_1: [File object for second page]
 
 **Features:**
 - **Batch Processing**: Upload up to 50 images at once
-- **Optimized for Workers**: Uses deferred hook processing to stay within Cloudflare's subrequest limits
+- **Client-Side Thumbnails**: Accepts pre-generated thumbnails to skip server-side Jimp processing
+- **Optimized for Workers**: Uses deferred hook processing to minimize subrequests
 - **Individual Error Handling**: Failed uploads don't stop the batch
 - **Automatic Chapter Creation**: Creates "Uploaded Pages" chapter for orphaned images
 - **Draft Status**: All pages created as drafts for review
 - **Automatic Numbering**: Chapter and global page numbers assigned automatically (recalculated at end of batch)
 - **Size Limits**: 10MB per file, 50 files max per batch
+
+**Client-Side Thumbnail Format:**
+
+For each image `file_N`, the frontend can optionally provide:
+- `file_N_thumb` - 400px wide thumbnail
+- `file_N_thumb_large` - 800px wide thumbnail
+
+When both thumbnails are provided, server-side Jimp processing is skipped entirely, eliminating the CPU bottleneck. If thumbnails are not provided, the server falls back to Jimp generation (limited to ~20 files due to CPU time limits).
 
 ## Common Query Patterns
 
@@ -901,16 +910,17 @@ Chimera CMS uses a dual numbering system for comic pages:
 
 **Impact**: Schema changes require manual migration scripts and careful testing.
 
-### Cloudflare Workers Subrequest Limits
+### Cloudflare Workers CPU Time Limits
 
-**Issue**: Cloudflare Workers has a limit of 1000 subrequests (D1 queries, R2 operations, etc.) per invocation. Complex operations like bulk page creation can hit this limit.
+**Issue**: Cloudflare Workers has a 30-second CPU time limit. Jimp-based thumbnail generation is CPU-intensive (~1.5 seconds per image).
 
-**Workarounds Implemented**:
-- Bulk page upload uses "deferred hook" mode - expensive calculations (global page numbers, comic statistics) are skipped during individual page creation and run once at the end of the batch
-- This reduces per-page overhead from ~50-60 subrequests to ~10-12 subrequests
-- Bulk upload now supports up to 50 files per batch (50 × 12 + ~100 for end recalculation = ~700 subrequests)
+**Solution Implemented**:
+- Bulk upload accepts **client-side generated thumbnails** (`file_N_thumb`, `file_N_thumb_large`)
+- When thumbnails are provided, Jimp is bypassed entirely - supports up to 50 files per batch
+- Falls back to server-side Jimp if thumbnails not provided (limited to ~20 files due to CPU limits)
+- Deferred hook processing - expensive calculations run once at end of batch
 
-**Impact**: Users can upload up to 50 pages at once. Larger uploads should be split into multiple batches.
+**Impact**: Frontend should generate thumbnails using Canvas API for optimal bulk upload performance (50 files). Without client thumbnails, batch size is limited to ~20 files.
 
 ## Migration Notes
 
@@ -922,9 +932,10 @@ Chimera CMS uses a dual numbering system for comic pages:
 - **Removed obsolete endpoints**: `/api/chapters-by-comic/:comicId` and `/api/pages-by-comic/:comicId`
   - These were workarounds for an OpenNext issue that has been fixed
   - Use standard Payload endpoints instead: `GET /api/chapters?where[comic][equals]=:id`
-- **Optimized bulk upload**: Implemented deferred hook processing to stay within Cloudflare Workers subrequest limits
+- **Optimized bulk upload**: Implemented client-side thumbnail support and deferred hook processing
+  - Accepts client-generated thumbnails (`file_N_thumb`, `file_N_thumb_large`) - bypasses Jimp entirely
+  - Supports up to 50 files per batch with client thumbnails (falls back to ~20 without)
   - Expensive hooks (global page calculation, stats update) now run once at end of batch instead of per-page
-  - Supports up to 50 files per batch (up from the initial 15-file limit)
 - **Fixed CORS**: Updated hardcoded localhost CORS headers to `*` in bulk-create-pages and pages-with-media endpoints
 
 ### December 2024 Update (v3.65.0)

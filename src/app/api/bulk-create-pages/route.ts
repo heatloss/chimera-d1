@@ -3,12 +3,13 @@ import config from '@/payload.config'
 import { NextRequest, NextResponse } from 'next/server'
 
 // Configuration constants
-// Note: Cloudflare Workers has a 1000 subrequest limit per invocation.
-// With bulk mode optimizations (deferred hooks), each page requires ~10-12 subrequests.
-// 50 pages × ~12 = ~600 subrequests, plus ~100 for end-of-batch recalculation.
+// With client-side thumbnail generation, we're no longer CPU-bound by Jimp.
+// 50 files is a reasonable batch size for network/memory constraints.
 const MAX_FILES = 50;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
-// const MAX_TOTAL_SIZE = 200 * 1024 * 1024; // 200MB total batch
+
+// Thumbnail size names must match what the frontend generates
+const THUMBNAIL_SIZES = ['thumb', 'thumb_large'] as const;
 
 // CORS headers for cross-origin requests
 const corsHeaders = {
@@ -130,7 +131,7 @@ export async function POST(request: NextRequest) {
         const fileBuffer = await file.arrayBuffer();
 
         // Sanitize filename: replace spaces with underscores, remove special chars
-        const sanitizedName = file.name
+        let sanitizedName = file.name
           .replace(/\s+/g, '_')            // Replace spaces with underscores
           .replace(/[^a-zA-Z0-9._-]/g, '') // Remove special chars (keep dots, underscores, hyphens)
           .replace(/_+/g, '_')             // Collapse multiple underscores
@@ -144,31 +145,123 @@ export async function POST(request: NextRequest) {
           throw new Error('R2 bucket not configured')
         }
 
-        // Upload main image file to R2
-        const mainFileKey = `media/${sanitizedName}`
-        // Use Uint8Array instead of Buffer for compatibility with Miniflare
+        // Check for filename collision and generate unique name if needed
+        let finalFilename = sanitizedName;
+        let attempt = 0;
+        const maxAttempts = 100;
+
+        while (attempt < maxAttempts) {
+          const existing = await payload.find({
+            collection: 'media',
+            where: { filename: { equals: finalFilename } },
+            limit: 1,
+          });
+          if (existing.docs.length === 0) break;
+          attempt++;
+          const nameParts = sanitizedName.split('.');
+          const extension = nameParts.length > 1 ? nameParts.pop() : '';
+          const baseName = nameParts.join('.');
+          finalFilename = extension ? `${baseName}-${attempt}.${extension}` : `${baseName}-${attempt}`;
+        }
+
+        if (attempt > 0) {
+          console.log(`⚠️ Filename collision, using: ${finalFilename}`);
+        }
+
+        // Check for client-provided thumbnails
+        const thumbFile = formData.get(`file_${i}_thumb`) as File | null;
+        const thumbLargeFile = formData.get(`file_${i}_thumb_large`) as File | null;
+        const hasClientThumbnails = thumbFile && thumbLargeFile;
+
+        // Upload main image to R2 BEFORE thumbnails to "claim" the filename
+        // This ensures Media hook's collision detection finds the same name we're using for thumbnails
+        // (Media hook will re-upload, but that's harmless - just overwrites with same content)
+        const mainFileKey = `media/${finalFilename}`
         await bucket.put(mainFileKey, new Uint8Array(fileBuffer), {
-          httpMetadata: {
-            contentType: file.type,
-          },
+          httpMetadata: { contentType: file.type },
         })
+        console.log(`✅ Main image uploaded: ${mainFileKey}`)
 
-        const fileData = {
-          data: Buffer.from(fileBuffer),
-          mimetype: file.type,
-          name: sanitizedName,
-          size: file.size,
-        };
+        let mediaDoc;
 
-        const mediaDoc = await payload.create({
-          collection: 'media',
-          data: {
-            alt: pageData.altText || '',
-            mediaType: 'comic_page',
-          },
-          file: fileData,
-          user, // Pass user context so hooks can access req.user
-        });
+        if (hasClientThumbnails) {
+          // CLIENT-SIDE THUMBNAILS: Upload pre-generated thumbnails, skip Jimp entirely
+          console.log(`📦 Using client-generated thumbnails for ${file.name}`);
+
+          const imageSizes: any[] = [];
+          const baseName = finalFilename.replace(/\.[^.]+$/, '');
+          const extension = finalFilename.split('.').pop() || 'jpg';
+
+          // Upload thumbnail (400px)
+          const thumbBuffer = await thumbFile.arrayBuffer();
+          const thumbFilename = `${baseName}-400w.${extension}`;
+          await bucket.put(`media/${thumbFilename}`, new Uint8Array(thumbBuffer), {
+            httpMetadata: { contentType: thumbFile.type },
+          });
+          imageSizes.push({
+            name: 'thumbnail',
+            filename: thumbFilename,
+            url: `/api/media/file/${thumbFilename}`,
+            fileSize: thumbFile.size,
+            mimeType: thumbFile.type,
+          });
+          console.log(`  ✓ thumbnail uploaded`);
+
+          // Upload thumbnail_large (800px)
+          const thumbLargeBuffer = await thumbLargeFile.arrayBuffer();
+          const thumbLargeFilename = `${baseName}-800w.${extension}`;
+          await bucket.put(`media/${thumbLargeFilename}`, new Uint8Array(thumbLargeBuffer), {
+            httpMetadata: { contentType: thumbLargeFile.type },
+          });
+          imageSizes.push({
+            name: 'thumbnail_large',
+            filename: thumbLargeFilename,
+            url: `/api/media/file/${thumbLargeFilename}`,
+            fileSize: thumbLargeFile.size,
+            mimeType: thumbLargeFile.type,
+          });
+          console.log(`  ✓ thumbnail_large uploaded`);
+
+          // Create media record - pass file but with pre-populated imageSizes
+          // The Media hook will see imageSizes already exists and skip Jimp
+          const fileData = {
+            data: Buffer.from(fileBuffer),
+            mimetype: file.type,
+            name: finalFilename,
+            size: file.size,
+          };
+
+          mediaDoc = await payload.create({
+            collection: 'media',
+            data: {
+              alt: pageData.altText || '',
+              mediaType: 'comic_page',
+              imageSizes: imageSizes, // Pre-populated - hook should skip generation
+            },
+            file: fileData,
+            user,
+          });
+        } else {
+          // NO CLIENT THUMBNAILS: Use existing Jimp-based flow
+          console.log(`🎨 No client thumbnails, using server-side generation for ${file.name}`);
+
+          const fileData = {
+            data: Buffer.from(fileBuffer),
+            mimetype: file.type,
+            name: finalFilename,
+            size: file.size,
+          };
+
+          mediaDoc = await payload.create({
+            collection: 'media',
+            data: {
+              alt: pageData.altText || '',
+              mediaType: 'comic_page',
+            },
+            file: fileData,
+            user,
+          });
+        }
 
         // Step 2: Create page with uploaded media
         // BULK MODE: Skip expensive hooks during creation, recalculate at end

@@ -257,51 +257,56 @@ export const Media: CollectionConfig = {
             console.warn('⚠️  R2 bucket not found - main image will not be uploaded')
           }
 
-          // Detect runtime: Workers or Node.js
-          const isWorkersRuntime = typeof process === 'undefined' ||
-            (typeof globalThis !== 'undefined' && 'caches' in globalThis)
+          // Skip thumbnail generation if imageSizes is already provided (client-side thumbnails)
+          if (data.imageSizes && Array.isArray(data.imageSizes) && data.imageSizes.length > 0) {
+            console.log(`📦 Using pre-provided thumbnails (${data.imageSizes.length} sizes) - skipping server generation`)
+          } else {
+            // Detect runtime: Workers or Node.js
+            const isWorkersRuntime = typeof process === 'undefined' ||
+              (typeof globalThis !== 'undefined' && 'caches' in globalThis)
 
-          try {
-            let thumbnails
-            if (isWorkersRuntime) {
-              console.log('🌐 Using Jimp (Workers runtime)')
-              const { generateThumbnailsJimp } = await import('@/lib/generateThumbnailsJimp')
-              thumbnails = await generateThumbnailsJimp(
-                req.file.data,
-                req.file.name,
-                req.file.mimetype
-              )
-            } else {
-              console.log('🖥️  Using Sharp (Node.js runtime)')
-              const { generateThumbnailsSharp } = await import('@/lib/generateThumbnailsSharp')
-              thumbnails = await generateThumbnailsSharp(
-                req.file.data,
-                req.file.name,
-                req.file.mimetype
-              )
+            try {
+              let thumbnails
+              if (isWorkersRuntime) {
+                console.log('🌐 Using Jimp (Workers runtime)')
+                const { generateThumbnailsJimp } = await import('@/lib/generateThumbnailsJimp')
+                thumbnails = await generateThumbnailsJimp(
+                  req.file.data,
+                  req.file.name,
+                  req.file.mimetype
+                )
+              } else {
+                console.log('🖥️  Using Sharp (Node.js runtime)')
+                const { generateThumbnailsSharp } = await import('@/lib/generateThumbnailsSharp')
+                thumbnails = await generateThumbnailsSharp(
+                  req.file.data,
+                  req.file.name,
+                  req.file.mimetype
+                )
+              }
+
+              // Upload thumbnails to R2
+              if (bucket) {
+                console.log('📦 Uploading thumbnails to R2')
+                const { uploadThumbnailsToR2 } = await import('@/lib/uploadThumbnails')
+                thumbnails = await uploadThumbnailsToR2(thumbnails, bucket, 'media')
+              } else {
+                console.warn('⚠️  R2 bucket not found - storing thumbnail metadata only')
+                // Remove buffers from metadata if we can't upload
+                thumbnails = thumbnails.map(t => {
+                  const { buffer, ...rest } = t
+                  return rest
+                })
+              }
+
+              // Store thumbnails as JSON (without buffers)
+              data.imageSizes = thumbnails
+              console.log(`✅ Stored ${thumbnails.length} thumbnail metadata entries`)
+            } catch (error) {
+              console.error('❌ Thumbnail generation failed:', error)
+              // Don't fail the upload if thumbnail generation fails
+              data.imageSizes = []
             }
-
-            // Upload thumbnails to R2
-            if (bucket) {
-              console.log('📦 Uploading thumbnails to R2')
-              const { uploadThumbnailsToR2 } = await import('@/lib/uploadThumbnails')
-              thumbnails = await uploadThumbnailsToR2(thumbnails, bucket, 'media')
-            } else {
-              console.warn('⚠️  R2 bucket not found - storing thumbnail metadata only')
-              // Remove buffers from metadata if we can't upload
-              thumbnails = thumbnails.map(t => {
-                const { buffer, ...rest } = t
-                return rest
-              })
-            }
-
-            // Store thumbnails as JSON (without buffers)
-            data.imageSizes = thumbnails
-            console.log(`✅ Stored ${thumbnails.length} thumbnail metadata entries`)
-          } catch (error) {
-            console.error('❌ Thumbnail generation failed:', error)
-            // Don't fail the upload if thumbnail generation fails
-            data.imageSizes = []
           }
         }
 
