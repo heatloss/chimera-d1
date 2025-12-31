@@ -25,6 +25,7 @@ const dirname = path.dirname(filename)
 const isCloudflareWorkers = typeof globalThis.navigator !== 'undefined' &&
   globalThis.navigator.userAgent === 'Cloudflare-Workers'
 
+// Get initial cloudflare context (for local dev this is the actual binding)
 const cloudflare = isCloudflareWorkers
   ? await getCloudflareContext({ async: true })
   : await getCloudflareContextFromWrangler()
@@ -33,6 +34,57 @@ const cloudflare = isCloudflareWorkers
 if (typeof globalThis !== 'undefined') {
   (globalThis as any).__CLOUDFLARE_CONTEXT__ = cloudflare
 }
+
+/**
+ * Create a Proxy for D1 binding that lazily fetches fresh context in Workers.
+ *
+ * PROBLEM: In Cloudflare Workers with OpenNext, the D1 binding from module-level
+ * initialization becomes stale during actual requests. DELETE operations
+ * would return success but not actually delete records.
+ *
+ * SOLUTION: Use a Proxy that intercepts D1 method calls and fetches a fresh
+ * binding from getCloudflareContext() at request time.
+ */
+function createLazyD1Binding(initialBinding: any) {
+  // In local dev, just return the static binding
+  if (!isCloudflareWorkers) {
+    return initialBinding
+  }
+
+  // In Workers, create a proxy that gets fresh binding on each call
+  return new Proxy({}, {
+    get(target, prop) {
+      // Get fresh context synchronously if possible, or return a function that does it async
+      const freshContext = getCloudflareContext()
+
+      if (freshContext instanceof Promise) {
+        // For async context, we need to return a function that resolves the context first
+        // This handles methods like prepare(), batch(), etc.
+        return (...args: any[]) => {
+          return freshContext.then(ctx => {
+            const freshBinding = ctx?.env?.D1 || initialBinding
+            const method = freshBinding[prop]
+            if (typeof method === 'function') {
+              return method.apply(freshBinding, args)
+            }
+            return method
+          })
+        }
+      }
+
+      // For sync context (shouldn't happen in Workers but just in case)
+      const freshBinding = (freshContext as any)?.env?.D1 || initialBinding
+      const value = freshBinding[prop]
+      if (typeof value === 'function') {
+        return value.bind(freshBinding)
+      }
+      return value
+    }
+  })
+}
+
+// Create the lazy D1 binding
+const lazyD1Binding = createLazyD1Binding(cloudflare.env.D1)
 
 export default buildConfig({
   admin: {
@@ -65,8 +117,14 @@ export default buildConfig({
   ],
   // database-adapter-config-start
   db: sqliteD1Adapter({
-    binding: cloudflare.env.D1,
+    binding: lazyD1Binding, // Use lazy binding to get fresh D1 context per-request
     push: false, // Disable automatic schema push - use manual migrations for SQLite/D1
+    logger: {
+      logQuery(query: string, params: unknown[]) {
+        console.log('📝 Drizzle SQL:', query)
+        console.log('📝 Drizzle params:', params)
+      }
+    }
   }),
   // database-adapter-config-end
   plugins: [
