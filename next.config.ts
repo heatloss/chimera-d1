@@ -1,5 +1,10 @@
+import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare'
 import { withPayload } from '@payloadcms/next/withPayload'
 import type { NextConfig } from 'next'
+
+// Initialize Cloudflare context for local development
+// This sets up the R2/D1 bindings so getCloudflareContext() works in API routes
+initOpenNextCloudflareForDev()
 
 const nextConfig: NextConfig = {
   // Your Next.js config here
