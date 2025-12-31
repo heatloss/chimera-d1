@@ -3,6 +3,9 @@ import config from '@/payload.config'
 import { NextRequest, NextResponse } from 'next/server'
 
 // Configuration constants
+// Note: Cloudflare Workers has a 1000 subrequest limit per invocation.
+// With bulk mode optimizations (deferred hooks), each page requires ~10-12 subrequests.
+// 50 pages × ~12 = ~600 subrequests, plus ~100 for end-of-batch recalculation.
 const MAX_FILES = 50;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 // const MAX_TOTAL_SIZE = 200 * 1024 * 1024; // 200MB total batch
@@ -168,6 +171,7 @@ export async function POST(request: NextRequest) {
         });
 
         // Step 2: Create page with uploaded media
+        // BULK MODE: Skip expensive hooks during creation, recalculate at end
         const pageDoc = await payload.create({
           collection: 'pages',
           data: {
@@ -181,6 +185,12 @@ export async function POST(request: NextRequest) {
             // Don't set chapterPageNumber - let the hook auto-assign it
           } as any,
           user, // Pass user context for access control and hooks
+          req: {
+            payload,
+            user,
+            skipGlobalPageCalculation: true,  // Defer to end-of-batch
+            skipComicStatsCalculation: true,  // Defer to end-of-batch
+          } as any,
         });
 
         // Success!
@@ -219,8 +229,28 @@ export async function POST(request: NextRequest) {
       `🎉 Bulk creation complete: ${results.successful} successful, ${results.failed} failed`,
     )
 
-    // Note: Global page numbers will be recalculated automatically by hooks
-    // when pages are created without skipGlobalPageCalculation flag
+    // BULK MODE: Run deferred calculations once at end of batch
+    if (results.successful > 0) {
+      console.log('📊 Running end-of-batch recalculations...')
+
+      try {
+        // Recalculate global page numbers for the entire comic
+        await recalculateGlobalPageNumbers(payload, comicId)
+        console.log('✅ Global page numbers recalculated')
+      } catch (error) {
+        console.error('⚠️ Failed to recalculate global page numbers:', error)
+        // Don't fail the request - pages were created successfully
+      }
+
+      try {
+        // Update comic statistics once
+        await updateComicStatistics(payload, comicId)
+        console.log('✅ Comic statistics updated')
+      } catch (error) {
+        console.error('⚠️ Failed to update comic statistics:', error)
+        // Don't fail the request - pages were created successfully
+      }
+    }
 
     return NextResponse.json(
       {
@@ -310,4 +340,114 @@ async function findOrCreateUploadChapter(
     console.error('❌ Error creating fallback chapter:', error);
     throw new Error(`Failed to create fallback chapter: ${error.message}`);
   }
+}
+
+/**
+ * Recalculate global page numbers for all pages in a comic.
+ * This is called once at the end of bulk operations instead of per-page.
+ */
+async function recalculateGlobalPageNumbers(
+  payload: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  comicId: number
+) {
+  // Get all chapters for this comic, ordered by chapter order
+  const chapters = await payload.find({
+    collection: 'chapters',
+    where: {
+      comic: { equals: comicId },
+    },
+    sort: 'order',
+    limit: 100,
+  });
+
+  let globalPageNumber = 1;
+
+  // Process each chapter in order
+  for (const chapter of chapters.docs) {
+    // Get all pages in this chapter, ordered by chapter page number
+    const pages = await payload.find({
+      collection: 'pages',
+      where: {
+        chapter: { equals: chapter.id },
+      },
+      sort: 'chapterPageNumber',
+      limit: 1000,
+    });
+
+    // Update global page number for each page
+    for (const page of pages.docs) {
+      if (page.globalPageNumber !== globalPageNumber) {
+        await payload.update({
+          collection: 'pages',
+          id: page.id,
+          data: {
+            globalPageNumber: globalPageNumber,
+          },
+          // Skip hooks to avoid cascading recalculations
+          req: {
+            payload,
+            skipGlobalPageCalculation: true,
+            skipComicStatsCalculation: true,
+          } as any,
+        });
+      }
+      globalPageNumber++;
+    }
+  }
+
+  console.log(`📊 Recalculated global page numbers: 1 to ${globalPageNumber - 1}`);
+}
+
+/**
+ * Update comic statistics (totalPages, lastPagePublished).
+ * This is called once at the end of bulk operations instead of per-page.
+ */
+async function updateComicStatistics(
+  payload: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  comicId: number
+) {
+  // Get current comic to preserve chapter stats
+  const comic = await payload.findByID({
+    collection: 'comics',
+    id: comicId,
+  });
+
+  // Count all pages for this comic
+  const allPages = await payload.find({
+    collection: 'pages',
+    where: {
+      comic: { equals: comicId },
+    },
+    limit: 1,
+  });
+
+  // Count published pages and find last published date
+  const publishedPages = await payload.find({
+    collection: 'pages',
+    where: {
+      comic: { equals: comicId },
+      status: { equals: 'published' },
+    },
+    sort: '-publishedDate',
+    limit: 1,
+  });
+
+  const lastPagePublished = publishedPages.docs.length > 0
+    ? publishedPages.docs[0].publishedDate
+    : null;
+
+  // Update comic stats
+  await payload.update({
+    collection: 'comics',
+    id: comicId,
+    data: {
+      stats: {
+        totalPages: allPages.totalDocs,
+        totalChapters: comic.stats?.totalChapters || 0, // Preserve from Chapters hook
+        lastPagePublished: lastPagePublished,
+      },
+    },
+  });
+
+  console.log(`📊 Updated comic stats: ${allPages.totalDocs} total pages`);
 }

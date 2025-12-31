@@ -639,10 +639,11 @@ file_1: [File object for second page]
 
 **Features:**
 - **Batch Processing**: Upload up to 50 images at once
+- **Optimized for Workers**: Uses deferred hook processing to stay within Cloudflare's subrequest limits
 - **Individual Error Handling**: Failed uploads don't stop the batch
 - **Automatic Chapter Creation**: Creates "Uploaded Pages" chapter for orphaned images
 - **Draft Status**: All pages created as drafts for review
-- **Automatic Numbering**: Chapter page numbers assigned automatically
+- **Automatic Numbering**: Chapter and global page numbers assigned automatically (recalculated at end of batch)
 - **Size Limits**: 10MB per file, 50 files max per batch
 
 ## Common Query Patterns
@@ -900,6 +901,17 @@ Chimera CMS uses a dual numbering system for comic pages:
 
 **Impact**: Schema changes require manual migration scripts and careful testing.
 
+### Cloudflare Workers Subrequest Limits
+
+**Issue**: Cloudflare Workers has a limit of 1000 subrequests (D1 queries, R2 operations, etc.) per invocation. Complex operations like bulk page creation can hit this limit.
+
+**Workarounds Implemented**:
+- Bulk page upload uses "deferred hook" mode - expensive calculations (global page numbers, comic statistics) are skipped during individual page creation and run once at the end of the batch
+- This reduces per-page overhead from ~50-60 subrequests to ~10-12 subrequests
+- Bulk upload now supports up to 50 files per batch (50 × 12 + ~100 for end recalculation = ~700 subrequests)
+
+**Impact**: Users can upload up to 50 pages at once. Larger uploads should be split into multiple batches.
+
 ## Migration Notes
 
 ### Late December 2024 Update (v3.69.0)
@@ -910,6 +922,10 @@ Chimera CMS uses a dual numbering system for comic pages:
 - **Removed obsolete endpoints**: `/api/chapters-by-comic/:comicId` and `/api/pages-by-comic/:comicId`
   - These were workarounds for an OpenNext issue that has been fixed
   - Use standard Payload endpoints instead: `GET /api/chapters?where[comic][equals]=:id`
+- **Optimized bulk upload**: Implemented deferred hook processing to stay within Cloudflare Workers subrequest limits
+  - Expensive hooks (global page calculation, stats update) now run once at end of batch instead of per-page
+  - Supports up to 50 files per batch (up from the initial 15-file limit)
+- **Fixed CORS**: Updated hardcoded localhost CORS headers to `*` in bulk-create-pages and pages-with-media endpoints
 
 ### December 2024 Update (v3.65.0)
 - **MAJOR FIX**: Upgraded to Payload v3.65.0 which includes Drizzle ORM v0.44.7
