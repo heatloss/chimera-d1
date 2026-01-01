@@ -43,23 +43,43 @@ if (typeof globalThis !== 'undefined') {
  * would return success but not actually delete records.
  *
  * SOLUTION: Use a Proxy that intercepts D1 method calls and fetches a fresh
- * binding from getCloudflareContext() at request time.
+ * binding from getCloudflareContext() at CALL TIME (not property access time).
+ * This ensures each database operation uses the correct request-scoped D1 binding.
+ *
+ * KEY INSIGHT: The wrapper function must call getCloudflareContext() inside the
+ * function body, not in the get() trap. This ensures the fresh binding is obtained
+ * at the moment the D1 method (like .prepare()) is actually invoked.
  */
 function createLazyD1Binding(initialBinding: any) {
-  // In local dev, just return the static binding
-  if (!isCloudflareWorkers) {
-    return initialBinding
-  }
-
-  // In Workers, create a proxy that gets fresh binding on each call
+  // Always create a Proxy - the runtime check happens inside the get trap
+  // This is necessary because isCloudflareWorkers is evaluated at BUILD time
+  // when we're in Node.js, not at RUNTIME when we're in Workers
   return new Proxy({}, {
     get(target, prop) {
-      // Get fresh context synchronously if possible, or return a function that does it async
-      const freshContext = getCloudflareContext()
+      // Skip internal properties that might be checked during Promise resolution
+      if (typeof prop === 'symbol' || prop === 'then' || prop === 'catch') {
+        return undefined
+      }
 
-      if (freshContext instanceof Promise) {
-        // For async context, we need to return a function that resolves the context first
-        // This handles methods like prepare(), batch(), etc.
+      // Check at RUNTIME if we're in Workers
+      const isWorkers = typeof globalThis.navigator !== 'undefined' &&
+        globalThis.navigator.userAgent === 'Cloudflare-Workers'
+
+      if (!isWorkers) {
+        // In local dev, use the initial binding directly
+        const value = initialBinding[prop]
+        if (typeof value === 'function') {
+          return value.bind(initialBinding)
+        }
+        return value
+      }
+
+      // In Workers, get fresh context - should be synchronous during a request
+      const freshContext = getCloudflareContext()
+      const isPromise = freshContext instanceof Promise
+
+      if (isPromise) {
+        // This shouldn't happen during a request, but handle it gracefully
         return (...args: any[]) => {
           return freshContext.then(ctx => {
             const freshBinding = ctx?.env?.D1 || initialBinding
@@ -72,19 +92,42 @@ function createLazyD1Binding(initialBinding: any) {
         }
       }
 
-      // For sync context (shouldn't happen in Workers but just in case)
-      const freshBinding = (freshContext as any)?.env?.D1 || initialBinding
-      const value = freshBinding[prop]
-      if (typeof value === 'function') {
-        return value.bind(freshBinding)
+      // Check if this property is a function by looking at the initial binding
+      // We need to handle non-function properties differently
+      const initialValue = initialBinding[prop]
+
+      if (typeof initialValue !== 'function') {
+        // For non-function properties, return from fresh binding
+        const syncContext = (freshContext as any)?.env?.D1 || initialBinding
+        return syncContext[prop]
       }
-      return value
+
+      // Return a wrapper function that gets FRESH binding at CALL TIME
+      // This is critical: we don't use the binding from when the property was accessed,
+      // we get it fresh every time the method is called
+      return function(...args: any[]) {
+        // Get fresh context at the moment the method is called
+        const callTimeContext = getCloudflareContext()
+        const isCallTimePromise = callTimeContext instanceof Promise
+
+        if (isCallTimePromise) {
+          // Async path - should be rare during requests
+          return callTimeContext.then((ctx: any) => {
+            const binding = ctx?.env?.D1 || initialBinding
+            return binding[prop](...args)
+          })
+        }
+
+        // Sync path - the expected case during requests
+        const binding = (callTimeContext as any)?.env?.D1 || initialBinding
+        return binding[prop](...args)
+      }
     }
   })
 }
 
-// Create the lazy D1 binding
-const lazyD1Binding = createLazyD1Binding(cloudflare.env.D1)
+// Create the lazy D1 binding (cast to any to satisfy TypeScript - the Proxy implements the D1 interface at runtime)
+const lazyD1Binding = createLazyD1Binding(cloudflare.env.D1) as any
 
 export default buildConfig({
   admin: {
@@ -119,12 +162,6 @@ export default buildConfig({
   db: sqliteD1Adapter({
     binding: lazyD1Binding, // Use lazy binding to get fresh D1 context per-request
     push: false, // Disable automatic schema push - use manual migrations for SQLite/D1
-    logger: {
-      logQuery(query: string, params: unknown[]) {
-        console.log('📝 Drizzle SQL:', query)
-        console.log('📝 Drizzle params:', params)
-      }
-    }
   }),
   // database-adapter-config-end
   plugins: [
