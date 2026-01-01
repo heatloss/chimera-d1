@@ -598,6 +598,43 @@ export const Pages: CollectionConfig = {
             // Don't throw - let the main operation succeed
           }
         }
+
+        // Update chapter statistics (pageCount, firstPageNumber, lastPageNumber)
+        // Guard: Skip if flag is set to prevent infinite loops
+        if (doc.chapter && req.payload && !(req as any).skipChapterStatsCalculation) {
+          try {
+            const chapterId = typeof doc.chapter === 'object' ? doc.chapter.id : doc.chapter
+            await updateChapterStatistics(req.payload, chapterId, req)
+          } catch (error) {
+            console.error('❌ Error updating chapter statistics:', error)
+            // Don't throw - let the main operation succeed
+          }
+        }
+      },
+    ],
+    afterDelete: [
+      async ({ doc, req }) => {
+        console.log(`🗑️ Page ${doc.chapterPageNumber || 'unknown'} deleted`)
+
+        // Update comic page statistics after deletion
+        if (doc.comic && req.payload && !(req as any).skipComicStatsCalculation) {
+          try {
+            const comicId = typeof doc.comic === 'object' ? doc.comic.id : doc.comic
+            await updateComicPageStatistics(req.payload, comicId, req)
+          } catch (error) {
+            console.error('❌ Error updating comic page statistics after delete:', error)
+          }
+        }
+
+        // Update chapter statistics after deletion
+        if (doc.chapter && req.payload && !(req as any).skipChapterStatsCalculation) {
+          try {
+            const chapterId = typeof doc.chapter === 'object' ? doc.chapter.id : doc.chapter
+            await updateChapterStatistics(req.payload, chapterId, req)
+          } catch (error) {
+            console.error('❌ Error updating chapter statistics after delete:', error)
+          }
+        }
       },
     ],
     // DISABLED: afterOperation hook was causing issues with DELETE operations
@@ -627,6 +664,69 @@ export const Pages: CollectionConfig = {
     // ],
   },
   timestamps: true,
+}
+
+// Update chapter statistics (pageCount, firstPageNumber, lastPageNumber)
+// Called after page create/update/delete operations
+async function updateChapterStatistics(payload: any, chapterId: string | number, req: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  try {
+    // Get all pages in this chapter, sorted by chapterPageNumber
+    const pagesInChapter = await payload.find({
+      collection: 'pages',
+      where: {
+        chapter: { equals: chapterId },
+      },
+      sort: 'chapterPageNumber',
+      limit: 1000,
+      req: {
+        ...req,
+        skipGlobalPageCalculation: true,
+        skipComicStatsCalculation: true,
+        skipChapterStatsCalculation: true,
+      } as any
+    })
+
+    const pageCount = pagesInChapter.totalDocs
+    let firstPageNumber = null
+    let lastPageNumber = null
+
+    if (pagesInChapter.docs.length > 0) {
+      // First page has the lowest globalPageNumber
+      const sortedByGlobal = pagesInChapter.docs
+        .filter((p: any) => p.globalPageNumber !== null && p.globalPageNumber !== undefined)
+        .sort((a: any, b: any) => a.globalPageNumber - b.globalPageNumber)
+
+      if (sortedByGlobal.length > 0) {
+        firstPageNumber = sortedByGlobal[0].globalPageNumber
+        lastPageNumber = sortedByGlobal[sortedByGlobal.length - 1].globalPageNumber
+      }
+    }
+
+    // Update chapter stats
+    await payload.update({
+      collection: 'chapters',
+      id: chapterId,
+      data: {
+        stats: {
+          pageCount,
+          firstPageNumber,
+          lastPageNumber,
+        }
+      },
+      req: {
+        ...req,
+        skipGlobalPageCalculation: true,
+        skipComicStatsCalculation: true,
+        skipChapterStatsCalculation: true,
+      } as any,
+    })
+
+    console.log(`📖 Updated chapter ${chapterId} stats: ${pageCount} pages, global range: ${firstPageNumber || 'n/a'}-${lastPageNumber || 'n/a'}`)
+    return true
+  } catch (error) {
+    console.error('Error in updateChapterStatistics:', error)
+    return false
+  }
 }
 
 // Update ONLY page-related statistics (totalPages, lastPagePublished)

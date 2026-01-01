@@ -294,6 +294,65 @@ export const Chapters: CollectionConfig = {
         return data
       },
     ],
+    beforeDelete: [
+      async ({ id, req }) => {
+        // Get the chapter being deleted to find its comic
+        const chapterToDelete = await req.payload.findByID({
+          collection: 'chapters',
+          id,
+        })
+
+        if (!chapterToDelete) return
+
+        const comicId = typeof chapterToDelete.comic === 'object'
+          ? chapterToDelete.comic.id
+          : chapterToDelete.comic
+
+        // Check if this chapter has any pages
+        const pagesInChapter = await req.payload.find({
+          collection: 'pages',
+          where: { chapter: { equals: id } },
+          limit: 1,
+        })
+
+        if (pagesInChapter.totalDocs === 0) {
+          console.log(`🗑️ Chapter "${chapterToDelete.title}" has no pages, safe to delete`)
+          return
+        }
+
+        console.log(`⚠️ Chapter "${chapterToDelete.title}" has ${pagesInChapter.totalDocs} pages, reassigning to "Unassigned Pages"`)
+
+        // Find or create "Unassigned Pages" chapter for this comic
+        const unassignedChapter = await findOrCreateUnassignedChapter(req.payload, comicId)
+
+        // Get ALL pages in the chapter being deleted
+        const allPages = await req.payload.find({
+          collection: 'pages',
+          where: { chapter: { equals: id } },
+          limit: 1000,
+        })
+
+        // Reassign each page to the "Unassigned Pages" chapter
+        for (const page of allPages.docs) {
+          await req.payload.update({
+            collection: 'pages',
+            id: page.id,
+            data: { chapter: unassignedChapter.id },
+            req: {
+              ...req,
+              skipGlobalPageCalculation: true,
+              skipComicStatsCalculation: true,
+              skipChapterStatsCalculation: true,
+            } as any,
+          })
+        }
+
+        console.log(`✅ Reassigned ${allPages.docs.length} pages to "${unassignedChapter.title}"`)
+
+        // Update stats for the "Unassigned Pages" chapter
+        await updateChapterStats(req.payload, unassignedChapter.id, req)
+      },
+    ],
     afterChange: [
       async ({ doc, req, operation }) => {
         console.log(`✅ Chapter ${operation} completed: ${doc.title}`)
@@ -356,4 +415,102 @@ export const Chapters: CollectionConfig = {
     ],
   },
   timestamps: true,
+}
+
+// Helper function to find or create the "Unassigned Pages" fallback chapter
+async function findOrCreateUnassignedChapter(
+  payload: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  comicId: number | string
+) {
+  const UNASSIGNED_CHAPTER_TITLE = 'Unassigned Pages'
+
+  // Try to find existing "Unassigned Pages" chapter for this comic
+  const existingChapters = await payload.find({
+    collection: 'chapters',
+    where: {
+      comic: { equals: comicId },
+      title: { equals: UNASSIGNED_CHAPTER_TITLE },
+    },
+    limit: 1,
+  })
+
+  if (existingChapters.docs.length > 0) {
+    console.log(`📁 Using existing "${UNASSIGNED_CHAPTER_TITLE}" chapter`)
+    return existingChapters.docs[0]
+  }
+
+  // Create new "Unassigned Pages" chapter
+  console.log(`📁 Creating "${UNASSIGNED_CHAPTER_TITLE}" chapter`)
+
+  // Get current highest chapter order for this comic
+  const allChapters = await payload.find({
+    collection: 'chapters',
+    where: { comic: { equals: comicId } },
+    sort: '-order',
+    limit: 1,
+  })
+
+  const nextOrder = allChapters.docs.length > 0 ? allChapters.docs[0].order + 1 : 1
+
+  const newChapter = await payload.create({
+    collection: 'chapters',
+    data: {
+      comic: comicId,
+      title: UNASSIGNED_CHAPTER_TITLE,
+      description: 'Pages that were orphaned when their original chapter was deleted',
+      order: nextOrder,
+    },
+  })
+
+  console.log(`✅ Created "${UNASSIGNED_CHAPTER_TITLE}" chapter (Order: ${nextOrder})`)
+  return newChapter
+}
+
+// Helper function to update chapter statistics
+async function updateChapterStats(
+  payload: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  chapterId: number | string,
+  req: any // eslint-disable-line @typescript-eslint/no-explicit-any
+) {
+  const pagesInChapter = await payload.find({
+    collection: 'pages',
+    where: { chapter: { equals: chapterId } },
+    sort: 'chapterPageNumber',
+    limit: 1000,
+  })
+
+  const pageCount = pagesInChapter.totalDocs
+  let firstPageNumber = null
+  let lastPageNumber = null
+
+  if (pagesInChapter.docs.length > 0) {
+    const sortedByGlobal = pagesInChapter.docs
+      .filter((p: any) => p.globalPageNumber !== null && p.globalPageNumber !== undefined)
+      .sort((a: any, b: any) => a.globalPageNumber - b.globalPageNumber)
+
+    if (sortedByGlobal.length > 0) {
+      firstPageNumber = sortedByGlobal[0].globalPageNumber
+      lastPageNumber = sortedByGlobal[sortedByGlobal.length - 1].globalPageNumber
+    }
+  }
+
+  await payload.update({
+    collection: 'chapters',
+    id: chapterId,
+    data: {
+      stats: {
+        pageCount,
+        firstPageNumber,
+        lastPageNumber,
+      },
+    },
+    req: {
+      ...req,
+      skipGlobalPageCalculation: true,
+      skipComicStatsCalculation: true,
+      skipChapterStatsCalculation: true,
+    } as any,
+  })
+
+  console.log(`📖 Updated chapter ${chapterId} stats: ${pageCount} pages`)
 }

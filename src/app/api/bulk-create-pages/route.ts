@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const startTime = Date.now();
     console.log(
       `📤 Starting bulk page creation: ${pagesData.length} pages for comic ${comicId}`,
     );
@@ -81,9 +82,12 @@ export async function POST(request: NextRequest) {
     };
     const pageResults = [];
     let fallbackChapter = null;
+    const affectedChapterIds = new Set<number>(); // Track chapters that need stats update
 
     // Process each page
     for (let i = 0; i < pagesData.length; i++) {
+      const elapsedMs = Date.now() - startTime;
+      console.log(`⏱️ File ${i + 1}/${pagesData.length} - elapsed: ${elapsedMs}ms`);
       const pageData = pagesData[i];
       const fileKey = `file_${i}`;
       const file = formData.get(fileKey) as File;
@@ -297,24 +301,30 @@ export async function POST(request: NextRequest) {
           globalPageNumber: pageDoc.globalPageNumber,
         });
         results.successful++;
+        affectedChapterIds.add(chapterId); // Track for end-of-batch stats update
 
         console.log(`✅ Created page: ${pageDoc.displayTitle}`);
       } catch (error: any) {
-        // Individual page failed
-        console.error(`❌ Failed to create page for ${file?.name}:`, error);
+        // Individual page failed - log full details including underlying cause
+        console.error(`❌ Failed to create page for ${file?.name}:`, error.message);
+
+        // DrizzleQueryError wraps the real D1 error in .cause
+        if (error.cause) {
+          console.error('🔍 Underlying cause:', error.cause);
+          console.error('🔍 Cause message:', error.cause?.message);
+          console.error('🔍 Cause name:', error.cause?.name);
+        }
+
         console.error('Error stack:', error.stack);
 
         pageResults.push({
           success: false,
           error: error.message || String(error),
+          cause: error.cause?.message || error.cause?.toString() || null,
           filename: file?.name || `file_${i}`,
           title: pageData.title || '',
         });
         results.failed++;
-
-        console.error(
-          `❌ Failed to create page for ${file?.name}: ${error.message || String(error)}`,
-        );
       }
     }
 
@@ -342,6 +352,17 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error('⚠️ Failed to update comic statistics:', error)
         // Don't fail the request - pages were created successfully
+      }
+
+      // Update chapter statistics for all affected chapters
+      for (const chapterId of affectedChapterIds) {
+        try {
+          await updateChapterStatistics(payload, chapterId)
+          console.log(`✅ Chapter ${chapterId} statistics updated`)
+        } catch (error) {
+          console.error(`⚠️ Failed to update chapter ${chapterId} statistics:`, error)
+          // Don't fail the request - pages were created successfully
+        }
       }
     }
 
@@ -543,4 +564,54 @@ async function updateComicStatistics(
   });
 
   console.log(`📊 Updated comic stats: ${allPages.totalDocs} total pages`);
+}
+
+/**
+ * Update chapter statistics (pageCount, firstPageNumber, lastPageNumber).
+ * Called once per affected chapter at the end of bulk operations.
+ */
+async function updateChapterStatistics(
+  payload: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  chapterId: number
+) {
+  // Get all pages in this chapter, sorted by chapterPageNumber
+  const pagesInChapter = await payload.find({
+    collection: 'pages',
+    where: {
+      chapter: { equals: chapterId },
+    },
+    sort: 'chapterPageNumber',
+    limit: 1000,
+  });
+
+  const pageCount = pagesInChapter.totalDocs;
+  let firstPageNumber = null;
+  let lastPageNumber = null;
+
+  if (pagesInChapter.docs.length > 0) {
+    // Find min and max globalPageNumber
+    const sortedByGlobal = pagesInChapter.docs
+      .filter((p: any) => p.globalPageNumber !== null && p.globalPageNumber !== undefined)
+      .sort((a: any, b: any) => a.globalPageNumber - b.globalPageNumber);
+
+    if (sortedByGlobal.length > 0) {
+      firstPageNumber = sortedByGlobal[0].globalPageNumber;
+      lastPageNumber = sortedByGlobal[sortedByGlobal.length - 1].globalPageNumber;
+    }
+  }
+
+  // Update chapter stats
+  await payload.update({
+    collection: 'chapters',
+    id: chapterId,
+    data: {
+      stats: {
+        pageCount,
+        firstPageNumber,
+        lastPageNumber,
+      },
+    },
+  });
+
+  console.log(`📖 Updated chapter ${chapterId} stats: ${pageCount} pages, global range: ${firstPageNumber || 'n/a'}-${lastPageNumber || 'n/a'}`);
 }
