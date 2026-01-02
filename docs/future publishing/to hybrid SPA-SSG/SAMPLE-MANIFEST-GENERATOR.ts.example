@@ -1,0 +1,468 @@
+/**
+ * Manifest Generator Script
+ *
+ * Generates static JSON manifests for the SPA reader:
+ * - comics.json: Master index of all published comics
+ * - {slug}/manifest.json: Per-comic page manifest
+ *
+ * The SPA never contacts the CMS directly. It only reads these
+ * static JSON files from its own origin (R2 or static host).
+ *
+ * Usage:
+ *   pnpm tsx scripts/generate-manifests.ts
+ *   pnpm tsx scripts/generate-manifests.ts --comic=my-comic  # Single comic
+ *
+ * This script:
+ * 1. Queries the CMS API for published content
+ * 2. Generates JSON manifest files
+ * 3. Uploads to R2 under /sites/ prefix
+ *
+ * Later, this can be triggered by:
+ * - Payload afterChange hooks
+ * - Cron job for scheduled publishing
+ * - Manual "Publish" button in admin UI
+ */
+
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+
+// ---
+// Configuration
+// ---
+
+const config = {
+  // CMS API base URL
+  cmsApiUrl: process.env.CMS_API_URL || 'https://api.chimeracomics.org',
+
+  // Optional API token for authenticated endpoints
+  cmsApiToken: process.env.CMS_API_TOKEN,
+
+  // R2 configuration
+  r2: {
+    accountId: process.env.R2_ACCOUNT_ID!,
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    bucketName: process.env.R2_BUCKET_NAME || 'chimera-media',
+  },
+
+  // Prefix for manifest files in R2
+  sitesPrefix: 'sites',
+
+  // Base URL where images are served from (for manifest URLs)
+  mediaBaseUrl: '/media',
+}
+
+// ---
+// Types
+// ---
+
+interface Comic {
+  id: number
+  slug: string
+  title: string
+  tagline?: string
+  description?: string
+  thumbnail?: { filename: string; width?: number; height?: number }
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface Chapter {
+  id: number
+  title: string
+  chapterNumber: number
+  comic: number | { id: number }
+}
+
+interface Page {
+  id: number
+  pageNumber: number
+  title?: string
+  altText?: string
+  authorNote?: string
+  status: string
+  publishedDate?: string
+  pageImage?: { filename: string; width?: number; height?: number }
+  thumbnailImage?: { filename: string }
+  chapter?: number | { id: number; chapterNumber: number }
+  comic: number | { id: number }
+}
+
+interface ComicsIndex {
+  version: string
+  generatedAt: string
+  comics: ComicIndexEntry[]
+}
+
+interface ComicIndexEntry {
+  id: number
+  slug: string
+  title: string
+  tagline: string | null
+  thumbnail: string | null
+  pageCount: number
+  latestPageDate: string | null
+  route: string
+}
+
+interface ComicManifest {
+  version: string
+  generatedAt: string
+  comic: {
+    id: number
+    slug: string
+    title: string
+    tagline: string | null
+    description: string | null
+    thumbnail: string | null
+  }
+  chapters: ManifestChapter[]
+  pages: ManifestPage[]
+  navigation: {
+    firstPage: number | null
+    lastPage: number | null
+    totalPages: number
+  }
+}
+
+interface ManifestChapter {
+  id: number
+  title: string
+  number: number
+  startPage: number | null
+  endPage: number | null
+  pageCount: number
+}
+
+interface ManifestPage {
+  number: number
+  chapter: number | null
+  image: string
+  thumbnail: string | null
+  width: number | null
+  height: number | null
+  title: string | null
+  altText: string | null
+  authorNote: string | null
+  publishedDate: string | null
+}
+
+// ---
+// CMS API Client
+// ---
+
+async function fetchFromCMS<T>(endpoint: string): Promise<T> {
+  const url = `${config.cmsApiUrl}${endpoint}`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  if (config.cmsApiToken) {
+    headers['Authorization'] = `Bearer ${config.cmsApiToken}`
+  }
+
+  const response = await fetch(url, { headers })
+
+  if (!response.ok) {
+    throw new Error(`CMS API error: ${response.status} ${await response.text()}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Fetch all comics that have at least one published page
+ */
+async function fetchPublishedComics(): Promise<Comic[]> {
+  // Using Payload's REST API with filtering
+  // Adjust endpoint based on your actual API structure
+  const result = await fetchFromCMS<{ docs: Comic[] }>(
+    '/api/comics?where[status][equals]=published&limit=1000'
+  )
+  return result.docs
+}
+
+/**
+ * Fetch all published pages for a comic
+ */
+async function fetchPublishedPages(comicId: number): Promise<Page[]> {
+  const now = new Date().toISOString()
+
+  // Fetch pages that are published and have publishedDate <= now
+  const result = await fetchFromCMS<{ docs: Page[] }>(
+    `/api/pages?where[comic][equals]=${comicId}` +
+    `&where[status][equals]=published` +
+    `&where[publishedDate][less_than_equal]=${now}` +
+    `&depth=1` + // Populate relationships
+    `&limit=10000` +
+    `&sort=pageNumber`
+  )
+
+  return result.docs
+}
+
+/**
+ * Fetch chapters for a comic
+ */
+async function fetchChapters(comicId: number): Promise<Chapter[]> {
+  const result = await fetchFromCMS<{ docs: Chapter[] }>(
+    `/api/chapters?where[comic][equals]=${comicId}&limit=1000&sort=chapterNumber`
+  )
+  return result.docs
+}
+
+// ---
+// Manifest Generation
+// ---
+
+/**
+ * Generate the master comics.json index
+ */
+async function generateComicsIndex(comics: Comic[]): Promise<ComicsIndex> {
+  const entries: ComicIndexEntry[] = []
+
+  for (const comic of comics) {
+    const pages = await fetchPublishedPages(comic.id)
+
+    // Skip comics with no published pages
+    if (pages.length === 0) continue
+
+    const latestPage = pages.reduce((latest, page) => {
+      if (!page.publishedDate) return latest
+      if (!latest || page.publishedDate > latest) return page.publishedDate
+      return latest
+    }, null as string | null)
+
+    entries.push({
+      id: comic.id,
+      slug: comic.slug,
+      title: comic.title,
+      tagline: comic.tagline || null,
+      thumbnail: comic.thumbnail?.filename
+        ? `${config.mediaBaseUrl}/${comic.thumbnail.filename}`
+        : null,
+      pageCount: pages.length,
+      latestPageDate: latestPage,
+      route: `/${comic.slug}/`,
+    })
+  }
+
+  // Sort by latest update (most recent first)
+  entries.sort((a, b) => {
+    if (!a.latestPageDate) return 1
+    if (!b.latestPageDate) return -1
+    return b.latestPageDate.localeCompare(a.latestPageDate)
+  })
+
+  return {
+    version: '1.0',
+    generatedAt: new Date().toISOString(),
+    comics: entries,
+  }
+}
+
+/**
+ * Generate manifest.json for a single comic
+ */
+async function generateComicManifest(comic: Comic): Promise<ComicManifest | null> {
+  const [pages, chapters] = await Promise.all([
+    fetchPublishedPages(comic.id),
+    fetchChapters(comic.id),
+  ])
+
+  // Skip if no published pages
+  if (pages.length === 0) {
+    console.log(`  Skipping ${comic.slug}: no published pages`)
+    return null
+  }
+
+  // Build chapter data with page ranges
+  const chapterData: ManifestChapter[] = chapters.map((chapter) => {
+    const chapterPages = pages.filter((p) => {
+      const chapterId = typeof p.chapter === 'object' ? p.chapter?.id : p.chapter
+      return chapterId === chapter.id
+    })
+    const pageNumbers = chapterPages.map((p) => p.pageNumber)
+
+    return {
+      id: chapter.id,
+      title: chapter.title,
+      number: chapter.chapterNumber,
+      startPage: pageNumbers.length > 0 ? Math.min(...pageNumbers) : null,
+      endPage: pageNumbers.length > 0 ? Math.max(...pageNumbers) : null,
+      pageCount: chapterPages.length,
+    }
+  }).filter((ch) => ch.pageCount > 0)
+
+  // Build page data
+  const pageData: ManifestPage[] = pages.map((page) => {
+    const chapterNum = typeof page.chapter === 'object'
+      ? page.chapter?.chapterNumber
+      : chapterData.find((c) => c.id === page.chapter)?.number
+
+    return {
+      number: page.pageNumber,
+      chapter: chapterNum || null,
+      image: page.pageImage?.filename
+        ? `${config.mediaBaseUrl}/${page.pageImage.filename}`
+        : '',
+      thumbnail: page.thumbnailImage?.filename
+        ? `${config.mediaBaseUrl}/${page.thumbnailImage.filename}`
+        : null,
+      width: page.pageImage?.width || null,
+      height: page.pageImage?.height || null,
+      title: page.title || null,
+      altText: page.altText || null,
+      authorNote: page.authorNote || null,
+      publishedDate: page.publishedDate || null,
+    }
+  })
+
+  const pageNumbers = pageData.map((p) => p.number)
+
+  return {
+    version: '1.0',
+    generatedAt: new Date().toISOString(),
+    comic: {
+      id: comic.id,
+      slug: comic.slug,
+      title: comic.title,
+      tagline: comic.tagline || null,
+      description: comic.description || null,
+      thumbnail: comic.thumbnail?.filename
+        ? `${config.mediaBaseUrl}/${comic.thumbnail.filename}`
+        : null,
+    },
+    chapters: chapterData,
+    pages: pageData,
+    navigation: {
+      firstPage: pageNumbers.length > 0 ? Math.min(...pageNumbers) : null,
+      lastPage: pageNumbers.length > 0 ? Math.max(...pageNumbers) : null,
+      totalPages: pageData.length,
+    },
+  }
+}
+
+// ---
+// R2 Upload
+// ---
+
+function createR2Client(): S3Client {
+  return new S3Client({
+    region: 'auto',
+    endpoint: `https://${config.r2.accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: config.r2.accessKeyId,
+      secretAccessKey: config.r2.secretAccessKey,
+    },
+  })
+}
+
+async function uploadToR2(client: S3Client, key: string, content: string): Promise<void> {
+  await client.send(
+    new PutObjectCommand({
+      Bucket: config.r2.bucketName,
+      Key: key,
+      Body: content,
+      ContentType: 'application/json',
+      CacheControl: 'public, max-age=60', // Short cache for manifests
+    })
+  )
+}
+
+// ---
+// Main
+// ---
+
+async function main() {
+  const args = process.argv.slice(2)
+  const singleComic = args.find((a) => a.startsWith('--comic='))?.split('=')[1]
+
+  console.log('Manifest Generator')
+  console.log('==================')
+  console.log(`CMS API: ${config.cmsApiUrl}`)
+  console.log(`R2 Bucket: ${config.r2.bucketName}`)
+  console.log()
+
+  const r2 = createR2Client()
+
+  if (singleComic) {
+    // Generate manifest for a single comic
+    console.log(`Generating manifest for: ${singleComic}`)
+
+    const comics = await fetchPublishedComics()
+    const comic = comics.find((c) => c.slug === singleComic)
+
+    if (!comic) {
+      console.error(`Comic not found: ${singleComic}`)
+      process.exit(1)
+    }
+
+    const manifest = await generateComicManifest(comic)
+    if (manifest) {
+      const key = `${config.sitesPrefix}/${comic.slug}/manifest.json`
+      await uploadToR2(r2, key, JSON.stringify(manifest, null, 2))
+      console.log(`  Uploaded: ${key}`)
+    }
+  } else {
+    // Generate all manifests
+    console.log('Fetching published comics...')
+    const comics = await fetchPublishedComics()
+    console.log(`Found ${comics.length} comics`)
+    console.log()
+
+    // Generate comics index
+    console.log('Generating comics.json index...')
+    const comicsIndex = await generateComicsIndex(comics)
+    const indexKey = `${config.sitesPrefix}/comics.json`
+    await uploadToR2(r2, indexKey, JSON.stringify(comicsIndex, null, 2))
+    console.log(`  Uploaded: ${indexKey} (${comicsIndex.comics.length} comics)`)
+    console.log()
+
+    // Generate per-comic manifests
+    console.log('Generating per-comic manifests...')
+    for (const comic of comics) {
+      console.log(`  Processing: ${comic.slug}`)
+      const manifest = await generateComicManifest(comic)
+      if (manifest) {
+        const key = `${config.sitesPrefix}/${comic.slug}/manifest.json`
+        await uploadToR2(r2, key, JSON.stringify(manifest, null, 2))
+        console.log(`    Uploaded: ${key} (${manifest.pages.length} pages)`)
+      }
+    }
+  }
+
+  console.log()
+  console.log('Done!')
+}
+
+main().catch((error) => {
+  console.error('Error:', error)
+  process.exit(1)
+})
+
+
+// ---
+// Environment variables needed:
+//
+// CMS_API_URL=https://api.chimeracomics.org
+// CMS_API_TOKEN=optional-api-token
+// R2_ACCOUNT_ID=your-cloudflare-account-id
+// R2_ACCESS_KEY_ID=your-r2-access-key
+// R2_SECRET_ACCESS_KEY=your-r2-secret-key
+// R2_BUCKET_NAME=chimera-media
+//
+// ---
+// Dependencies:
+//
+// pnpm add @aws-sdk/client-s3
+//
+// ---
+// Future enhancements:
+//
+// 1. Incremental updates: Only regenerate manifests for comics that changed
+// 2. Cache invalidation: Notify SPA's service worker of updates
+// 3. Diff detection: Compare new manifest with existing, skip if unchanged
+// 4. Parallel uploads: Use Promise.all for faster bulk generation
+// 5. Dry run mode: --dry-run flag to preview without uploading
+// ---

@@ -1,69 +1,183 @@
-# Chimera CMS - SPA Reader with Static JSON Manifest
+# Chimera CMS - SPA Reader with Static JSON Manifests
 
 ## Overview
 
-This document describes an architecture for serving webcomics via a Single Page Application (SPA) reader that provides a mobile-optimized, swipe-to-read experience. Despite the folder name, this approach uses **static JSON files as a pseudo-API**, not a live server API.
+This architecture serves webcomics via a Single Page Application (SPA) reader that provides a mobile-optimized, swipe-to-read experience. The SPA is a **passive consumer** of static JSON manifests - it never contacts the CMS directly.
 
-The key insight: an SSG can generate machine-readable JSON alongside human-readable HTML during the same build. This JSON manifest serves as the "API" for the SPA reader, with no server required at read time.
+### Key Principle
+
+```
+CMS publishes TO the SPA's origin
+SPA reads FROM its own origin
+SPA never knows the CMS exists
+```
 
 ### Design Goals
 
 1. **Mobile-first reading** - Swipe navigation, instant page transitions
-2. **Offline capability** - Service worker caches manifest and images
-3. **No runtime dependencies** - Everything is static files
-4. **SEO preserved** - Static HTML pages exist for search engines
-5. **Same build pipeline** - Uses the existing SSG infrastructure
+2. **Offline capability** - Service worker caches manifests and images
+3. **No runtime CMS dependency** - SPA reads only static files
+4. **Clean separation** - CMS is authoring; SPA is consumption
+5. **No SSG layer needed** - CMS generates JSON directly (no 11ty)
 
 ## Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                     Static Site (R2 or any host)                        │
+│                         Chimera CMS                                     │
+│                    (api.chimeracomics.org)                              │
 │                                                                         │
-│   /comics/my-comic/                                                     │
-│     index.html           ← Landing page (SEO, sharing)                  │
-│     manifest.json        ← Page list, metadata (the "API")              │
-│     archive/index.html   ← Static archive page (SEO)                    │
-│     page/1/index.html    ← Individual page (SEO, direct links)          │
-│     page/2/index.html                                                   │
-│     reader/index.html    ← SPA reader shell                             │
-│     assets/                                                             │
-│       reader.js          ← Reader application                           │
-│       sw.js              ← Service worker                               │
+│   D1 Database                                                           │
+│   ├── comics table                                                      │
+│   ├── chapters table                                                    │
+│   └── pages table                                                       │
+│                                                                         │
+│   Manifest Generator (scripts/generate-manifests.ts)                    │
+│   ├── Queries published content from D1                                 │
+│   ├── Generates comics.json (master index)                              │
+│   └── Generates {slug}/manifest.json (per-comic)                        │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ Publishes JSON + images
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    R2 Bucket / Static Host                              │
+│                   (app.chimeracomics.org)                               │
+│                                                                         │
+│   /sites/                                                               │
+│     comics.json              ← Master index of all comics               │
+│     my-comic/                                                           │
+│       manifest.json          ← Pages, chapters, metadata                │
+│     other-comic/                                                        │
+│       manifest.json                                                     │
 │                                                                         │
 │   /media/                                                               │
-│     abc123.jpg           ← Comic images (from R2)                       │
-│     abc123-thumb.jpg                                                    │
+│     abc123.jpg               ← Comic page images                        │
+│     def456.jpg               ← (already uploaded during authoring)      │
+│     abc123-thumb.jpg         ← Thumbnails                               │
+│                                                                         │
+│   /reader/                                                              │
+│     index.html               ← SPA shell                                │
+│     reader.js                ← Reader application                       │
+│     sw.js                    ← Service worker                           │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     │ User visits
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         SPA Reader Flow                                 │
+│                         SPA Reader                                      │
 │                                                                         │
-│   1. Browser loads /comics/my-comic/reader/                             │
-│   2. Service worker registers                                           │
-│   3. Reader fetches manifest.json (cached by SW)                        │
-│   4. Reader knows all pages, image URLs, navigation                     │
-│   5. Reader prefetches next N images in background                      │
-│   6. User swipes → instant transition from cache                        │
-│   7. SW continues prefetching ahead of reader position                  │
+│   1. Load /sites/comics.json    → Show comic directory                  │
+│   2. User picks a comic                                                 │
+│   3. Load /sites/{slug}/manifest.json                                   │
+│   4. Service worker caches manifest                                     │
+│   5. Reader prefetches upcoming images from /media/                     │
+│   6. User swipes through pages (instant from cache)                     │
+│                                                                         │
+│   The SPA only reads from its own origin.                               │
+│   It has no knowledge of the CMS or its API.                            │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## The Manifest
+## Data Flow
 
-The manifest is a JSON file generated during the SSG build containing everything the reader needs:
+### Publishing Flow (CMS → Static Host)
+
+```
+1. Creator publishes/edits a page in CMS
+2. Manifest generator runs (manually, via hook, or cron)
+3. Generator queries CMS for published content:
+   - Comics with status='published'
+   - Pages with status='published' AND publishedDate <= NOW
+4. Generator creates:
+   - comics.json (all published comics)
+   - {slug}/manifest.json (for each comic with published pages)
+5. Generator uploads JSON files to R2 /sites/ prefix
+6. Images are already in R2 /media/ (uploaded during authoring)
+```
+
+### Reading Flow (User → SPA)
+
+```
+1. User visits app.chimeracomics.org
+2. SPA loads and registers service worker
+3. SPA fetches /sites/comics.json (cached by SW)
+4. User selects a comic
+5. SPA fetches /sites/{slug}/manifest.json (cached by SW)
+6. SPA now knows all page URLs, chapter structure, metadata
+7. SPA prefetches next N images into SW cache
+8. User swipes → instant display from cache
+9. SW continues prefetching ahead of reading position
+```
+
+### Cache Invalidation (Optional)
+
+When new content is published, the CMS could optionally notify the SPA:
+
+```
+Option A: Version in manifest
+- Manifest includes "version" timestamp
+- SW checks for new version periodically
+- If version changed, SW refetches and notifies reader
+
+Option B: Push notification
+- CMS sends push notification via Web Push API
+- SW receives notification, refetches manifests
+- Shows "New pages available" toast
+
+Option C: Polling
+- SW periodically fetches manifest with cache-bust
+- Compares page count with cached version
+- Notifies if new content detected
+```
+
+For MVP, Option A (version polling) is simplest.
+
+## File Structures
+
+### comics.json (Master Index)
 
 ```json
 {
-  "version": "2025-01-02T12:00:00Z",
+  "version": "1.0",
+  "generatedAt": "2025-01-02T12:00:00Z",
+  "comics": [
+    {
+      "id": 4,
+      "slug": "my-comic",
+      "title": "My Webcomic",
+      "tagline": "A story about adventure",
+      "thumbnail": "/media/comic-thumb.jpg",
+      "pageCount": 156,
+      "latestPageDate": "2025-01-01",
+      "route": "/my-comic/"
+    },
+    {
+      "id": 7,
+      "slug": "other-comic",
+      "title": "Other Comic",
+      "tagline": null,
+      "thumbnail": "/media/other-thumb.jpg",
+      "pageCount": 42,
+      "latestPageDate": "2024-12-15",
+      "route": "/other-comic/"
+    }
+  ]
+}
+```
+
+### {slug}/manifest.json (Per-Comic)
+
+```json
+{
+  "version": "1.0",
+  "generatedAt": "2025-01-02T12:00:00Z",
   "comic": {
     "id": 4,
     "slug": "my-comic",
     "title": "My Webcomic",
-    "tagline": "A story about...",
-    "author": "Jane Creator",
+    "tagline": "A story about adventure",
+    "description": "Full description here...",
     "thumbnail": "/media/comic-thumb.jpg"
   },
   "chapters": [
@@ -72,14 +186,8 @@ The manifest is a JSON file generated during the SSG build containing everything
       "title": "Chapter 1: The Beginning",
       "number": 1,
       "startPage": 1,
-      "endPage": 24
-    },
-    {
-      "id": 2,
-      "title": "Chapter 2: Rising Action",
-      "number": 2,
-      "startPage": 25,
-      "endPage": 48
+      "endPage": 24,
+      "pageCount": 24
     }
   ],
   "pages": [
@@ -94,18 +202,6 @@ The manifest is a JSON file generated during the SSG build containing everything
       "altText": "Our hero stands at the crossroads",
       "authorNote": "This is where it all begins!",
       "publishedDate": "2024-06-15"
-    },
-    {
-      "number": 2,
-      "chapter": 1,
-      "image": "/media/def456.jpg",
-      "thumbnail": "/media/def456-thumb.jpg",
-      "width": 800,
-      "height": 1200,
-      "title": null,
-      "altText": null,
-      "authorNote": null,
-      "publishedDate": "2024-06-22"
     }
   ],
   "navigation": {
@@ -116,182 +212,111 @@ The manifest is a JSON file generated during the SSG build containing everything
 }
 ```
 
-### Manifest Size Estimate
+## Why No 11ty?
 
-| Comic Size | Approx Manifest Size |
-|------------|---------------------|
-| 100 pages  | ~15 KB              |
-| 500 pages  | ~60 KB              |
-| 1000 pages | ~120 KB             |
+The SSG (11ty) layer documented in the "to Node-based host" folder is for generating **static HTML pages** - useful for SEO, direct linking, and non-JavaScript fallback.
 
-Compressed with gzip, these shrink to roughly 1/4 the size. A 500-page comic's manifest would be ~15 KB over the wire.
+For a **pure SPA reader**, we don't need HTML generation:
 
-## Reading Experience
+| Need | SSG Approach | SPA Approach |
+|------|--------------|--------------|
+| Page data | HTML templates → HTML files | CMS query → JSON files |
+| Navigation | Links between HTML pages | JS reads manifest |
+| Images | Referenced in HTML | Referenced in manifest |
+| SEO | Full HTML pages | Separate concern (see below) |
 
-### Initial Load
+The SPA approach is simpler: just generate JSON, upload it, done.
 
-1. User arrives at `/comics/my-comic/` (from search, social share, direct link)
-2. Static landing page loads instantly (HTML from CDN)
-3. "Start Reading" button links to `/comics/my-comic/reader/`
-4. Or: individual page URLs (`/page/42/`) can redirect into reader at that position
+### SEO Considerations
 
-### Reader Initialization
+For search engine visibility, consider:
 
-1. SPA shell loads (`reader/index.html` + `reader.js`)
-2. Service worker registers and activates
-3. Reader fetches `manifest.json` (SW caches it)
-4. Reader renders current page from manifest data
-5. Background prefetch begins for upcoming images
+1. **Static landing pages** - Simple HTML pages per comic (can be hand-written or generated) that link to the SPA reader
+2. **Server-side rendering** - If using a framework like Next.js for the SPA
+3. **Prerendering** - Generate HTML snapshots for crawlers
+4. **Accept reduced SEO** - If discovery happens through social sharing rather than search
 
-### Swipe Navigation
+For MVP/testing, SEO can be deferred.
 
-1. User swipes left → next page
-2. Image already in SW cache → instant display
-3. Reader updates URL (history.pushState) for bookmarking
-4. Prefetch queue advances (fetch page N+5, N+6, etc.)
+## Triggering Manifest Generation
 
-### Offline Reading
+### Manual (Testing)
 
-1. Service worker caches:
-   - Reader shell (HTML, JS, CSS)
-   - Manifest JSON
-   - Viewed page images
-   - Prefetched upcoming images
-2. User goes offline
-3. Reader continues working from cache
-4. "You're offline" indicator if trying to access uncached pages
-
-## Service Worker Strategy
-
-### Cache Layers
-
-```
-┌─────────────────────────────────────────┐
-│           Cache: reader-shell-v1        │
-│  - reader/index.html                    │
-│  - assets/reader.js                     │
-│  - assets/reader.css                    │
-│  Strategy: Cache first, update in bg    │
-└─────────────────────────────────────────┘
-
-┌─────────────────────────────────────────┐
-│          Cache: manifest-v1             │
-│  - manifest.json                        │
-│  Strategy: Stale-while-revalidate       │
-│  (Serve cached, fetch fresh in bg)      │
-└─────────────────────────────────────────┘
-
-┌─────────────────────────────────────────┐
-│          Cache: comic-images            │
-│  - /media/*.jpg                         │
-│  Strategy: Cache first (immutable)      │
-│  Images don't change once published     │
-└─────────────────────────────────────────┘
+```bash
+pnpm tsx scripts/generate-manifests.ts
+pnpm tsx scripts/generate-manifests.ts --comic=my-comic
 ```
 
-### Update Detection
+### On Publish (Hook)
 
-The service worker checks for manifest updates:
-
-```javascript
-// On reader load or periodically
-const cached = await caches.match('/manifest.json')
-const fresh = await fetch('/manifest.json', { cache: 'no-store' })
-
-if (fresh.headers.get('etag') !== cached?.headers.get('etag')) {
-  // New content available
-  // Option A: Auto-update and notify user
-  // Option B: Show "New pages available" prompt
+```typescript
+// In Pages collection afterChange hook
+if (pageIsNowLive(doc, previousDoc)) {
+  await generateManifestForComic(doc.comic)
+  await regenerateComicsIndex()
 }
 ```
 
-## Build Integration
+### Scheduled (Cron)
 
-This approach extends the existing SSG build (from the "to Node-based host" documentation):
+For scheduled publishing (publishedDate in future):
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         11ty Build Process                              │
-│                                                                         │
-│   Input:                                                                │
-│     - Comic data from CMS API                                           │
-│     - 11ty templates                                                    │
-│                                                                         │
-│   Output:                                                               │
-│     - index.html          (landing page)                                │
-│     - manifest.json       (NEW: page data for reader)                   │
-│     - archive/index.html  (archive listing)                             │
-│     - page/*/index.html   (individual pages for SEO)                    │
-│     - reader/index.html   (SPA reader shell)                            │
-│     - assets/*            (reader JS, CSS, service worker)              │
-└─────────────────────────────────────────────────────────────────────────┘
+```typescript
+// Cron runs every 5 minutes
+// Finds comics with pages where publishedDate just passed
+// Regenerates affected manifests
 ```
 
-The manifest generation is a simple 11ty template that outputs JSON instead of HTML.
+See "to Node-based host" folder for cron implementation details.
 
-## URL Structure
+## Service Worker Strategy
 
-| URL | Purpose |
-|-----|---------|
-| `/comics/my-comic/` | Landing page (SEO, social sharing) |
-| `/comics/my-comic/reader/` | SPA reader entry point |
-| `/comics/my-comic/reader/#/page/42` | Deep link to specific page (hash routing) |
-| `/comics/my-comic/page/42/` | Static HTML page (SEO, fallback) |
-| `/comics/my-comic/archive/` | Static archive listing |
-| `/comics/my-comic/manifest.json` | Page data for reader |
+```
+┌─────────────────────────────────────┐
+│      Cache: reader-shell-v1         │
+│  - /reader/index.html               │
+│  - /reader/reader.js                │
+│  Strategy: Cache first              │
+└─────────────────────────────────────┘
 
-### Deep Linking
+┌─────────────────────────────────────┐
+│      Cache: manifests               │
+│  - /sites/comics.json               │
+│  - /sites/*/manifest.json           │
+│  Strategy: Stale-while-revalidate   │
+└─────────────────────────────────────┘
 
-The reader uses hash-based routing (`#/page/42`) so that:
-- Direct links work without server configuration
-- Browser back/forward buttons work
-- Bookmarks preserve position
-- Static hosting requires no URL rewriting
-
-Alternative: If hosting supports SPA fallback routing, use clean URLs (`/reader/page/42`).
-
-## Comparison with Live API Approach
-
-| Aspect | Static Manifest | Live API |
-|--------|-----------------|----------|
-| Content freshness | Build delay (5-10 min) | Instant |
-| Offline support | Full (cached manifest) | Limited (API unreachable) |
-| Server dependency | None at read time | CMS must be up |
-| Infrastructure | Same as SSG | Need public API endpoints |
-| Consistency | Manifest matches HTML | Could diverge |
-| Caching | Simple (immutable files) | Complex (invalidation) |
-
-## SEO Considerations
-
-The SPA reader is progressive enhancement over a fully-functional static site:
-
-1. **Search engines see static HTML** - `/page/1/`, `/page/2/`, etc. are real HTML pages
-2. **Social sharing works** - Landing page has OpenGraph tags, preview images
-3. **JavaScript not required** - Static pages work without JS (just no swipe UX)
-4. **Sitemap** - Can be generated during build listing all page URLs
+┌─────────────────────────────────────┐
+│      Cache: comic-images            │
+│  - /media/*.jpg                     │
+│  Strategy: Cache first (immutable)  │
+└─────────────────────────────────────┘
+```
 
 ## Files in This Directory
 
 - `ARCHITECTURE-PLAN.md` - This document
-- `SAMPLE-MANIFEST-TEMPLATE.js.example` - 11ty template for generating manifest.json
-- `SAMPLE-SERVICE-WORKER.js.example` - Service worker for caching strategy
-- `SAMPLE-READER-COMPONENT.tsx.example` - React/Preact reader component concept
+- `SAMPLE-MANIFEST-GENERATOR.ts.example` - Script to generate and upload manifests
+- `SAMPLE-SERVICE-WORKER.js.example` - Service worker for caching (to be created)
+- `SAMPLE-READER-COMPONENT.tsx.example` - React reader component (to be created)
 
 ## Relationship to Other Approaches
 
-This architecture **builds on** the "to Node-based host" SSG approach:
+| Approach | Use Case |
+|----------|----------|
+| **to Node-based host** (SSG) | Full static site with HTML pages for SEO |
+| **to PHP-based host** (SSG) | Deploy to creator-owned shared hosting |
+| **to SPA via API** (this) | Mobile-optimized reader, no HTML generation |
 
-- Same CMS → GitHub Actions → 11ty → R2 pipeline
-- Same rebuild triggers (cron + afterChange hook)
-- Adds: manifest.json generation
-- Adds: reader SPA component
-- Adds: service worker for offline support
-
-The reader component could potentially be shared across all comics (loaded from a CDN) or bundled per-comic during build.
+These can be combined:
+- Generate HTML for SEO + JSON for SPA reader
+- Use 11ty for both (HTML templates + JSON output)
+- Or keep them separate (HTML from 11ty, JSON from generator script)
 
 ## Future Considerations
 
-- **Reader customization** - Allow creators to choose themes, reading direction (LTR/RTL)
-- **Reading progress sync** - Optional account system to sync position across devices
-- **Comments integration** - Load comments via separate API (could be third-party like Disqus)
-- **Analytics** - Track reading progress, popular pages (privacy-respecting)
+- **Incremental generation** - Only regenerate changed comics
+- **Diff detection** - Skip upload if manifest unchanged
+- **Push notifications** - Notify readers of new pages
+- **Reading progress sync** - Optional account system
+- **Comments** - Could load from separate service
