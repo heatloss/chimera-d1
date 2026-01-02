@@ -287,6 +287,7 @@ export async function POST(request: NextRequest) {
             user,
             skipGlobalPageCalculation: true,  // Defer to end-of-batch
             skipComicStatsCalculation: true,  // Defer to end-of-batch
+            skipChapterStatsCalculation: true,  // Defer to end-of-batch
           } as any,
         });
 
@@ -502,6 +503,7 @@ async function recalculateGlobalPageNumbers(
             payload,
             skipGlobalPageCalculation: true,
             skipComicStatsCalculation: true,
+            skipChapterStatsCalculation: true,
           } as any,
         });
       }
