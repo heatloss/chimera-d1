@@ -1,0 +1,301 @@
+/**
+ * Service Worker for Comic Reader SPA
+ *
+ * This file goes in: src/assets/sw.js (copied to output during build)
+ *
+ * Caching strategy:
+ * - Reader shell: Cache first, update in background
+ * - Manifest: Stale-while-revalidate (serve cached, fetch fresh)
+ * - Comic images: Cache first (immutable, never change)
+ *
+ * The service worker enables:
+ * - Offline reading of cached pages
+ * - Instant page transitions (images pre-cached)
+ * - Background updates when new content is available
+ */
+
+const CACHE_VERSION = 'v1'
+const SHELL_CACHE = `reader-shell-${CACHE_VERSION}`
+const MANIFEST_CACHE = `manifest-${CACHE_VERSION}`
+const IMAGE_CACHE = `comic-images-${CACHE_VERSION}`
+
+// Files that make up the reader shell (update version to bust cache)
+const SHELL_FILES = [
+  '/reader/',
+  '/reader/index.html',
+  '/assets/reader.js',
+  '/assets/reader.css',
+]
+
+// ---
+// Installation
+// ---
+
+self.addEventListener('install', (event) => {
+  console.log('[SW] Installing service worker')
+
+  event.waitUntil(
+    caches.open(SHELL_CACHE).then((cache) => {
+      console.log('[SW] Caching reader shell')
+      return cache.addAll(SHELL_FILES)
+    })
+  )
+
+  // Activate immediately without waiting for old SW to finish
+  self.skipWaiting()
+})
+
+// ---
+// Activation
+// ---
+
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Activating service worker')
+
+  // Clean up old caches
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => {
+            // Delete caches from old versions
+            return (
+              name.startsWith('reader-shell-') ||
+              name.startsWith('manifest-') ||
+              name.startsWith('comic-images-')
+            ) && !name.endsWith(CACHE_VERSION)
+          })
+          .map((name) => {
+            console.log('[SW] Deleting old cache:', name)
+            return caches.delete(name)
+          })
+      )
+    })
+  )
+
+  // Take control of all pages immediately
+  self.clients.claim()
+})
+
+// ---
+// Fetch handling
+// ---
+
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url)
+
+  // Only handle GET requests
+  if (event.request.method !== 'GET') return
+
+  // Only handle same-origin requests
+  if (url.origin !== self.location.origin) return
+
+  // Route to appropriate caching strategy
+  if (isShellRequest(url)) {
+    event.respondWith(cacheFirst(event.request, SHELL_CACHE))
+  } else if (isManifestRequest(url)) {
+    event.respondWith(staleWhileRevalidate(event.request, MANIFEST_CACHE))
+  } else if (isImageRequest(url)) {
+    event.respondWith(cacheFirst(event.request, IMAGE_CACHE))
+  }
+  // Let other requests go to network normally
+})
+
+// ---
+// Request type detection
+// ---
+
+function isShellRequest(url) {
+  return (
+    url.pathname.startsWith('/reader') ||
+    url.pathname.startsWith('/assets/reader')
+  )
+}
+
+function isManifestRequest(url) {
+  return url.pathname.endsWith('/manifest.json')
+}
+
+function isImageRequest(url) {
+  return (
+    url.pathname.startsWith('/media/') ||
+    url.pathname.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+  )
+}
+
+// ---
+// Caching strategies
+// ---
+
+/**
+ * Cache First: Return cached version, only fetch if not cached
+ * Best for: Shell files, images (immutable content)
+ */
+async function cacheFirst(request, cacheName) {
+  const cached = await caches.match(request)
+  if (cached) {
+    return cached
+  }
+
+  try {
+    const response = await fetch(request)
+    if (response.ok) {
+      const cache = await caches.open(cacheName)
+      cache.put(request, response.clone())
+    }
+    return response
+  } catch (error) {
+    console.error('[SW] Fetch failed:', error)
+    // Could return a fallback offline page here
+    return new Response('Offline', { status: 503 })
+  }
+}
+
+/**
+ * Stale While Revalidate: Return cached, fetch fresh in background
+ * Best for: Manifest (want quick response, but also fresh data)
+ */
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName)
+  const cached = await cache.match(request)
+
+  // Fetch fresh version in background
+  const fetchPromise = fetch(request).then((response) => {
+    if (response.ok) {
+      cache.put(request, response.clone())
+
+      // Notify clients if manifest changed
+      if (cached) {
+        checkForManifestUpdate(cached, response.clone())
+      }
+    }
+    return response
+  })
+
+  // Return cached immediately if available, otherwise wait for fetch
+  return cached || fetchPromise
+}
+
+// ---
+// Update detection
+// ---
+
+/**
+ * Compare old and new manifests, notify reader if content changed
+ */
+async function checkForManifestUpdate(oldResponse, newResponse) {
+  try {
+    const oldManifest = await oldResponse.json()
+    const newManifest = await newResponse.json()
+
+    // Check if page count changed (simple heuristic)
+    if (newManifest.navigation.totalPages > oldManifest.navigation.totalPages) {
+      const newPageCount = newManifest.navigation.totalPages - oldManifest.navigation.totalPages
+
+      // Notify all reader windows
+      const clients = await self.clients.matchAll({ type: 'window' })
+      clients.forEach((client) => {
+        client.postMessage({
+          type: 'MANIFEST_UPDATED',
+          newPageCount,
+          message: `${newPageCount} new page${newPageCount > 1 ? 's' : ''} available!`,
+        })
+      })
+    }
+  } catch (error) {
+    console.error('[SW] Error comparing manifests:', error)
+  }
+}
+
+// ---
+// Prefetch API (called from reader)
+// ---
+
+self.addEventListener('message', (event) => {
+  if (event.data.type === 'PREFETCH_IMAGES') {
+    const urls = event.data.urls
+    prefetchImages(urls)
+  }
+
+  if (event.data.type === 'CLEAR_IMAGE_CACHE') {
+    clearImageCache()
+  }
+})
+
+/**
+ * Prefetch images into cache
+ * Called by reader to preload upcoming pages
+ */
+async function prefetchImages(urls) {
+  const cache = await caches.open(IMAGE_CACHE)
+
+  for (const url of urls) {
+    // Skip if already cached
+    const cached = await cache.match(url)
+    if (cached) continue
+
+    try {
+      const response = await fetch(url)
+      if (response.ok) {
+        await cache.put(url, response)
+        console.log('[SW] Prefetched:', url)
+      }
+    } catch (error) {
+      console.warn('[SW] Prefetch failed:', url, error)
+    }
+  }
+}
+
+/**
+ * Clear image cache (for storage management)
+ */
+async function clearImageCache() {
+  await caches.delete(IMAGE_CACHE)
+  console.log('[SW] Image cache cleared')
+}
+
+// ---
+// Optional: Cache size management
+// ---
+
+/**
+ * Limit image cache size to prevent storage bloat
+ * Call periodically or when storage is low
+ */
+async function trimImageCache(maxItems = 200) {
+  const cache = await caches.open(IMAGE_CACHE)
+  const keys = await cache.keys()
+
+  if (keys.length > maxItems) {
+    // Delete oldest entries (assumes FIFO ordering)
+    const toDelete = keys.slice(0, keys.length - maxItems)
+    await Promise.all(toDelete.map((key) => cache.delete(key)))
+    console.log(`[SW] Trimmed ${toDelete.length} images from cache`)
+  }
+}
+
+
+// ---
+// Usage from Reader:
+//
+// // Register service worker
+// if ('serviceWorker' in navigator) {
+//   navigator.serviceWorker.register('/assets/sw.js')
+// }
+//
+// // Listen for update notifications
+// navigator.serviceWorker.addEventListener('message', (event) => {
+//   if (event.data.type === 'MANIFEST_UPDATED') {
+//     showToast(event.data.message)
+//   }
+// })
+//
+// // Prefetch upcoming pages
+// function prefetchPages(pageNumbers) {
+//   const urls = pageNumbers.map(n => manifest.pages[n - 1]?.image).filter(Boolean)
+//   navigator.serviceWorker.controller?.postMessage({
+//     type: 'PREFETCH_IMAGES',
+//     urls
+//   })
+// }
+// ---

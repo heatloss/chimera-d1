@@ -1,0 +1,515 @@
+/**
+ * Comic Reader Component (React/Preact)
+ *
+ * A mobile-first comic reader with:
+ * - Swipe navigation (touch)
+ * - Keyboard navigation (arrow keys)
+ * - Tap zones (left/right tap to navigate)
+ * - Image prefetching
+ * - Offline support via service worker
+ *
+ * This is a conceptual implementation showing the core architecture.
+ * A production version would add error boundaries, loading states,
+ * accessibility features, and more polish.
+ *
+ * Dependencies:
+ * - React/Preact
+ * - A gesture library like @use-gesture/react for swipe detection
+ *   (or vanilla touch event handling)
+ */
+
+import { useState, useEffect, useCallback, useRef } from 'react'
+
+// ---
+// Types
+// ---
+
+interface Manifest {
+  version: string
+  comic: {
+    id: number
+    slug: string
+    title: string
+    tagline: string | null
+    readingDirection: 'ltr' | 'rtl'
+  }
+  chapters: Chapter[]
+  pages: Page[]
+  navigation: {
+    firstPage: number
+    lastPage: number
+    totalPages: number
+  }
+}
+
+interface Chapter {
+  id: number
+  title: string
+  number: number
+  startPage: number
+  endPage: number
+}
+
+interface Page {
+  number: number
+  chapter: number | null
+  image: string
+  thumbnail: string | null
+  width: number | null
+  height: number | null
+  title: string | null
+  altText: string | null
+  authorNote: string | null
+  publishedDate: string | null
+}
+
+// ---
+// Main Reader Component
+// ---
+
+export function ComicReader() {
+  const [manifest, setManifest] = useState<Manifest | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Load manifest on mount
+  useEffect(() => {
+    loadManifest()
+    registerServiceWorker()
+    parseInitialPage()
+  }, [])
+
+  // Update URL when page changes
+  useEffect(() => {
+    if (manifest) {
+      window.history.replaceState(null, '', `#/page/${currentPage}`)
+      prefetchUpcoming(currentPage)
+    }
+  }, [currentPage, manifest])
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault()
+        goToNextPage()
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        goToPrevPage()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [manifest, currentPage])
+
+  // ---
+  // Data Loading
+  // ---
+
+  async function loadManifest() {
+    try {
+      const response = await fetch('/manifest.json')
+      if (!response.ok) throw new Error('Failed to load manifest')
+      const data = await response.json()
+      setManifest(data)
+      setLoading(false)
+    } catch (err) {
+      setError('Unable to load comic data. Please try again.')
+      setLoading(false)
+    }
+  }
+
+  function parseInitialPage() {
+    // Parse page from URL hash: #/page/42
+    const match = window.location.hash.match(/\/page\/(\d+)/)
+    if (match) {
+      setCurrentPage(parseInt(match[1], 10))
+    }
+  }
+
+  async function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+      try {
+        await navigator.serviceWorker.register('/assets/sw.js')
+
+        // Listen for update notifications
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data.type === 'MANIFEST_UPDATED') {
+            // Show notification to user (implement showToast)
+            console.log('New pages available:', event.data.message)
+          }
+        })
+      } catch (err) {
+        console.warn('Service worker registration failed:', err)
+      }
+    }
+  }
+
+  // ---
+  // Navigation
+  // ---
+
+  const goToNextPage = useCallback(() => {
+    if (!manifest) return
+    if (currentPage < manifest.navigation.lastPage) {
+      setCurrentPage((p) => p + 1)
+    }
+  }, [manifest, currentPage])
+
+  const goToPrevPage = useCallback(() => {
+    if (!manifest) return
+    if (currentPage > manifest.navigation.firstPage) {
+      setCurrentPage((p) => p - 1)
+    }
+  }, [manifest, currentPage])
+
+  const goToPage = useCallback((pageNum: number) => {
+    if (!manifest) return
+    const clamped = Math.max(
+      manifest.navigation.firstPage,
+      Math.min(manifest.navigation.lastPage, pageNum)
+    )
+    setCurrentPage(clamped)
+  }, [manifest])
+
+  // ---
+  // Prefetching
+  // ---
+
+  function prefetchUpcoming(currentPageNum: number) {
+    if (!manifest || !navigator.serviceWorker.controller) return
+
+    // Prefetch next 5 pages
+    const pagesToPrefetch = []
+    for (let i = 1; i <= 5; i++) {
+      const page = manifest.pages.find((p) => p.number === currentPageNum + i)
+      if (page?.image) {
+        pagesToPrefetch.push(page.image)
+      }
+    }
+
+    if (pagesToPrefetch.length > 0) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'PREFETCH_IMAGES',
+        urls: pagesToPrefetch,
+      })
+    }
+  }
+
+  // ---
+  // Helpers
+  // ---
+
+  function getCurrentPageData(): Page | null {
+    if (!manifest) return null
+    return manifest.pages.find((p) => p.number === currentPage) || null
+  }
+
+  function getCurrentChapter(): Chapter | null {
+    if (!manifest) return null
+    const page = getCurrentPageData()
+    if (!page?.chapter) return null
+    return manifest.chapters.find((c) => c.number === page.chapter) || null
+  }
+
+  // ---
+  // Render
+  // ---
+
+  if (loading) {
+    return <LoadingScreen />
+  }
+
+  if (error || !manifest) {
+    return <ErrorScreen message={error || 'Unknown error'} onRetry={loadManifest} />
+  }
+
+  const page = getCurrentPageData()
+  const chapter = getCurrentChapter()
+  const isFirstPage = currentPage === manifest.navigation.firstPage
+  const isLastPage = currentPage === manifest.navigation.lastPage
+
+  return (
+    <div className="comic-reader">
+      {/* Header */}
+      <header className="reader-header">
+        <h1>{manifest.comic.title}</h1>
+        {chapter && <span className="chapter-title">{chapter.title}</span>}
+        <span className="page-indicator">
+          {currentPage} / {manifest.navigation.totalPages}
+        </span>
+      </header>
+
+      {/* Main reading area */}
+      <main className="reader-main">
+        <PageDisplay
+          page={page}
+          onSwipeLeft={goToNextPage}
+          onSwipeRight={goToPrevPage}
+          onTapLeft={goToPrevPage}
+          onTapRight={goToNextPage}
+          readingDirection={manifest.comic.readingDirection}
+        />
+      </main>
+
+      {/* Navigation controls */}
+      <nav className="reader-nav">
+        <button onClick={goToPrevPage} disabled={isFirstPage}>
+          Previous
+        </button>
+        <button onClick={() => setShowArchive(true)}>
+          Archive
+        </button>
+        <button onClick={goToNextPage} disabled={isLastPage}>
+          Next
+        </button>
+      </nav>
+
+      {/* Author note (if present) */}
+      {page?.authorNote && (
+        <aside className="author-note">
+          <h2>Author's Note</h2>
+          <p>{page.authorNote}</p>
+        </aside>
+      )}
+    </div>
+  )
+}
+
+// ---
+// Page Display Component
+// ---
+
+interface PageDisplayProps {
+  page: Page | null
+  onSwipeLeft: () => void
+  onSwipeRight: () => void
+  onTapLeft: () => void
+  onTapRight: () => void
+  readingDirection: 'ltr' | 'rtl'
+}
+
+function PageDisplay({
+  page,
+  onSwipeLeft,
+  onSwipeRight,
+  onTapLeft,
+  onTapRight,
+  readingDirection,
+}: PageDisplayProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [imageLoaded, setImageLoaded] = useState(false)
+
+  // Reset loaded state when page changes
+  useEffect(() => {
+    setImageLoaded(false)
+  }, [page?.number])
+
+  // Touch handling for swipe
+  const touchStartX = useRef(0)
+  const touchStartY = useRef(0)
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current
+
+    // Ignore if mostly vertical swipe (scrolling)
+    if (Math.abs(deltaY) > Math.abs(deltaX)) return
+
+    const threshold = 50 // Minimum swipe distance
+
+    if (deltaX < -threshold) {
+      // Swiped left
+      readingDirection === 'ltr' ? onSwipeLeft() : onSwipeRight()
+    } else if (deltaX > threshold) {
+      // Swiped right
+      readingDirection === 'ltr' ? onSwipeRight() : onSwipeLeft()
+    }
+  }
+
+  // Tap zone handling
+  const handleClick = (e: React.MouseEvent) => {
+    if (!containerRef.current) return
+
+    const rect = containerRef.current.getBoundingClientRect()
+    const clickX = e.clientX - rect.left
+    const width = rect.width
+
+    // Left third = previous, right third = next, middle = nothing (for zooming later)
+    if (clickX < width / 3) {
+      readingDirection === 'ltr' ? onTapLeft() : onTapRight()
+    } else if (clickX > (width * 2) / 3) {
+      readingDirection === 'ltr' ? onTapRight() : onTapLeft()
+    }
+  }
+
+  if (!page) {
+    return <div className="page-missing">Page not found</div>
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="page-display"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onClick={handleClick}
+    >
+      {/* Show thumbnail while main image loads */}
+      {!imageLoaded && page.thumbnail && (
+        <img
+          src={page.thumbnail}
+          alt=""
+          className="page-thumbnail"
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Main page image */}
+      <img
+        src={page.image}
+        alt={page.altText || `Page ${page.number}`}
+        className={`page-image ${imageLoaded ? 'loaded' : 'loading'}`}
+        onLoad={() => setImageLoaded(true)}
+        // Aspect ratio hint to prevent layout shift
+        style={
+          page.width && page.height
+            ? { aspectRatio: `${page.width} / ${page.height}` }
+            : undefined
+        }
+      />
+    </div>
+  )
+}
+
+// ---
+// Supporting Components
+// ---
+
+function LoadingScreen() {
+  return (
+    <div className="loading-screen">
+      <div className="spinner" />
+      <p>Loading comic...</p>
+    </div>
+  )
+}
+
+function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="error-screen">
+      <p>{message}</p>
+      <button onClick={onRetry}>Try Again</button>
+    </div>
+  )
+}
+
+
+// ---
+// Minimal CSS (would be in a separate file)
+// ---
+/*
+.comic-reader {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #111;
+  color: #fff;
+}
+
+.reader-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: #222;
+}
+
+.reader-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.page-display {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: opacity 0.2s;
+}
+
+.page-image.loading {
+  opacity: 0;
+}
+
+.page-image.loaded {
+  opacity: 1;
+}
+
+.page-thumbnail {
+  position: absolute;
+  filter: blur(10px);
+  opacity: 0.5;
+}
+
+.reader-nav {
+  display: flex;
+  justify-content: space-around;
+  padding: 0.5rem;
+  background: #222;
+}
+
+.reader-nav button {
+  padding: 0.75rem 1.5rem;
+  background: #444;
+  border: none;
+  color: #fff;
+  border-radius: 4px;
+}
+
+.reader-nav button:disabled {
+  opacity: 0.5;
+}
+
+.author-note {
+  padding: 1rem;
+  background: #1a1a1a;
+  border-top: 1px solid #333;
+}
+*/
+
+
+// ---
+// Production Considerations:
+//
+// 1. Error boundaries for graceful failure
+// 2. Skeleton loading states
+// 3. Image zoom (pinch-to-zoom, double-tap)
+// 4. Fullscreen mode
+// 5. Reading progress persistence (localStorage)
+// 6. Keyboard shortcuts help modal
+// 7. Chapter navigation dropdown
+// 8. Page scrubber (thumbnail strip)
+// 9. Dark/light theme toggle
+// 10. Share button with current page URL
+// 11. Accessibility: focus management, screen reader announcements
+// 12. Analytics: reading progress, popular pages
+// 13. Comments section (could load from separate API)
+// ---

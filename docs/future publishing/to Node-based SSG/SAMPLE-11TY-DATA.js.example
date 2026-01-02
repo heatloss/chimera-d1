@@ -1,0 +1,169 @@
+/**
+ * 11ty Data File - Fetches comic data from CMS API
+ *
+ * This file goes in: src/_data/comic.js
+ *
+ * Environment variables (set in GitHub Actions workflow):
+ * - COMIC_SLUG: The slug of the comic to build
+ * - COMIC_ID: The ID of the comic to build
+ * - CMS_API_URL: Base URL of the CMS API
+ * - CMS_API_TOKEN: Optional auth token for protected endpoints
+ *
+ * The fetched data is available in templates as `comic.*`
+ */
+
+const EleventyFetch = require('@11ty/eleventy-fetch')
+
+module.exports = async function () {
+  const comicSlug = process.env.COMIC_SLUG
+  const comicId = process.env.COMIC_ID
+  const cmsApiUrl = process.env.CMS_API_URL || 'https://api.chimeracomics.org'
+  const cmsApiToken = process.env.CMS_API_TOKEN
+
+  if (!comicSlug || !comicId) {
+    throw new Error('COMIC_SLUG and COMIC_ID environment variables are required')
+  }
+
+  console.log(`Fetching data for comic: ${comicSlug} (ID: ${comicId})`)
+
+  const headers = {
+    Accept: 'application/json',
+  }
+
+  if (cmsApiToken) {
+    headers.Authorization = `Bearer ${cmsApiToken}`
+  }
+
+  // Fetch the complete comic with chapters and pages
+  const comicData = await EleventyFetch(`${cmsApiUrl}/api/comic-with-chapters/${comicId}`, {
+    duration: '0s', // Always fetch fresh during build
+    type: 'json',
+    fetchOptions: { headers },
+  })
+
+  // Fetch pages with fully populated media
+  const pagesWithMedia = await EleventyFetch(
+    `${cmsApiUrl}/api/pages-with-media?comic=${comicId}&sort=globalPageNumber`,
+    {
+      duration: '0s',
+      type: 'json',
+      fetchOptions: { headers },
+    }
+  )
+
+  // Fetch metadata (genres, tags, etc.) for reference
+  const metadata = await EleventyFetch(`${cmsApiUrl}/api/metadata`, {
+    duration: '1h', // Cache metadata longer, it changes rarely
+    type: 'json',
+    fetchOptions: { headers },
+  })
+
+  // Process and enhance the data
+  const pages = pagesWithMedia.docs || []
+  const publishedPages = pages.filter((p) => p.status === 'published')
+
+  // Build chapter map with their pages
+  const chaptersWithPages = (comicData.chapters || []).map((chapter) => {
+    const chapterPages = publishedPages.filter((p) => {
+      const pageChapterId = typeof p.chapter === 'object' ? p.chapter.id : p.chapter
+      return pageChapterId === chapter.id
+    })
+
+    return {
+      ...chapter,
+      pages: chapterPages.sort((a, b) => a.chapterPageNumber - b.chapterPageNumber),
+    }
+  })
+
+  // Find the latest and first pages
+  const sortedPages = [...publishedPages].sort((a, b) => b.globalPageNumber - a.globalPageNumber)
+  const latestPage = sortedPages[0] || null
+  const firstPage = sortedPages[sortedPages.length - 1] || null
+
+  // Build navigation data for each page
+  const pagesWithNav = publishedPages.map((page, index) => {
+    const sortedIndex = sortedPages.findIndex((p) => p.id === page.id)
+    return {
+      ...page,
+      isFirst: page.globalPageNumber === firstPage?.globalPageNumber,
+      isLast: page.globalPageNumber === latestPage?.globalPageNumber,
+      prevPage: sortedIndex < sortedPages.length - 1 ? sortedPages[sortedIndex + 1] : null,
+      nextPage: sortedIndex > 0 ? sortedPages[sortedIndex - 1] : null,
+    }
+  })
+
+  // Return the complete data structure for templates
+  return {
+    // Basic comic info
+    id: comicData.id,
+    title: comicData.title,
+    slug: comicData.slug,
+    description: comicData.description,
+    status: comicData.status,
+    publishSchedule: comicData.publishSchedule,
+    isNSFW: comicData.isNSFW,
+
+    // Media URLs (adjust based on your CMS media setup)
+    coverImage: comicData.coverImage,
+    mediaBaseUrl: `${cmsApiUrl}/api/media/file`,
+
+    // Credits
+    credits: comicData.credits || [],
+
+    // Taxonomy
+    genres: comicData.genres || [],
+    tags: comicData.tags || [],
+
+    // SEO metadata
+    seoMeta: comicData.seoMeta || {},
+
+    // Stats
+    stats: comicData.stats || {},
+
+    // Chapters with their pages
+    chapters: chaptersWithPages,
+
+    // Flat list of all published pages (for archive, pagination, etc.)
+    pages: pagesWithNav,
+    totalPages: publishedPages.length,
+
+    // Quick access to first/latest
+    firstPage,
+    latestPage,
+
+    // Site metadata reference
+    metadata,
+
+    // Build info
+    buildDate: new Date().toISOString(),
+    cmsApiUrl,
+  }
+}
+
+
+// ---
+// Usage in templates (Nunjucks examples):
+//
+// Comic title:
+//   {{ comic.title }}
+//
+// Cover image:
+//   <img src="{{ comic.mediaBaseUrl }}/{{ comic.coverImage.filename }}" alt="{{ comic.title }}">
+//
+// Latest page:
+//   <a href="/page/{{ comic.latestPage.globalPageNumber }}/">Read Latest</a>
+//
+// All chapters:
+//   {% for chapter in comic.chapters %}
+//     <h2>{{ chapter.title }}</h2>
+//     {% for page in chapter.pages %}
+//       <a href="/page/{{ page.globalPageNumber }}/">Page {{ page.chapterPageNumber }}</a>
+//     {% endfor %}
+//   {% endfor %}
+//
+// Archive listing:
+//   {% for page in comic.pages %}
+//     <a href="/page/{{ page.globalPageNumber }}/">
+//       {{ page.displayTitle }}
+//     </a>
+//   {% endfor %}

@@ -1,0 +1,173 @@
+/**
+ * Cron Worker for Scheduled Publishing
+ *
+ * Runs every 5 minutes to find pages whose publishedDate has newly crossed
+ * from future to past. Uses lastBuiltAt on comics to prevent redundant rebuilds.
+ *
+ * Wrangler configuration (wrangler.toml):
+ *
+ * [triggers]
+ * crons = ["*/5 * * * *"]  # Every 5 minutes
+ *
+ * [vars]
+ * GITHUB_REPO = "your-username/chimera-comic-ssg"
+ *
+ * # Secrets (set via wrangler secret put):
+ * # - GITHUB_TOKEN
+ */
+
+interface Env {
+  DB: D1Database
+  GITHUB_TOKEN: string
+  GITHUB_REPO: string
+}
+
+interface ComicToRebuild {
+  id: number
+  slug: string
+  deployUrl: string
+  deploySecret: string
+  lastBuiltAt: string | null
+}
+
+export default {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    console.log('🕐 Scheduled publishing cron started:', new Date().toISOString())
+
+    try {
+      // Find comics that have pages newly ready to publish
+      const comicsToRebuild = await findComicsNeedingRebuild(env)
+
+      if (comicsToRebuild.length === 0) {
+        console.log('✅ No comics need rebuilding')
+        return
+      }
+
+      console.log(`📋 Found ${comicsToRebuild.length} comics to rebuild`)
+
+      // Trigger builds for each comic
+      for (const comic of comicsToRebuild) {
+        try {
+          await triggerGitHubBuild(env, comic)
+          await updateLastBuiltAt(env, comic.id)
+          console.log(`✅ Triggered build for: ${comic.slug}`)
+        } catch (error) {
+          console.error(`❌ Failed to trigger build for ${comic.slug}:`, error)
+          // Continue with other comics
+        }
+      }
+
+      console.log('🕐 Scheduled publishing cron completed')
+    } catch (error) {
+      console.error('❌ Cron error:', error)
+      throw error
+    }
+  },
+}
+
+/**
+ * Find comics that have pages with publishedDate between lastBuiltAt and now
+ *
+ * Logic:
+ * - Page status = 'published'
+ * - Page publishedDate <= NOW (page should be visible)
+ * - Page publishedDate > comic.lastBuiltAt (page wasn't in last build)
+ * - Comic has deployment configured
+ */
+async function findComicsNeedingRebuild(env: Env): Promise<ComicToRebuild[]> {
+  const now = new Date().toISOString()
+
+  // This query finds comics that have:
+  // 1. At least one page with status='published' and publishedDate <= now
+  // 2. That page's publishedDate is after the comic's lastBuiltAt (or lastBuiltAt is null)
+  // 3. The comic has deployment settings configured
+  const result = await env.DB.prepare(`
+    SELECT DISTINCT
+      c.id,
+      c.slug,
+      c.deployment_deploy_url as deployUrl,
+      c.deployment_deploy_secret as deploySecret,
+      c.deployment_last_built_at as lastBuiltAt
+    FROM comics c
+    INNER JOIN pages p ON p.comic = c.id
+    WHERE p.status = 'published'
+      AND p.published_date <= ?
+      AND (
+        c.deployment_last_built_at IS NULL
+        OR p.published_date > c.deployment_last_built_at
+      )
+      AND c.deployment_deploy_url IS NOT NULL
+      AND c.deployment_deploy_url != ''
+      AND c.deployment_deploy_secret IS NOT NULL
+      AND c.deployment_deploy_secret != ''
+  `).bind(now).all<ComicToRebuild>()
+
+  return result.results || []
+}
+
+/**
+ * Update the lastBuiltAt timestamp for a comic
+ */
+async function updateLastBuiltAt(env: Env, comicId: number): Promise<void> {
+  const now = new Date().toISOString()
+
+  await env.DB.prepare(`
+    UPDATE comics
+    SET deployment_last_built_at = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).bind(now, now, comicId).run()
+}
+
+/**
+ * Trigger GitHub Actions build via repository_dispatch
+ */
+async function triggerGitHubBuild(env: Env, comic: ComicToRebuild): Promise<void> {
+  const url = `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/vnd.github+json',
+      'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'Chimera-CMS-Cron',
+    },
+    body: JSON.stringify({
+      event_type: 'build-comic',
+      client_payload: {
+        comic_slug: comic.slug,
+        comic_id: comic.id,
+        deploy_url: comic.deployUrl,
+        deploy_secret: comic.deploySecret,
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`GitHub API error: ${response.status} ${text}`)
+  }
+}
+
+
+// ---
+// Note on D1 column naming:
+//
+// Payload CMS with D1 adapter uses snake_case for column names.
+// The deployment group fields become:
+// - deployment_deploy_url
+// - deployment_deploy_secret
+// - deployment_last_built_at
+//
+// Verify exact column names with: PRAGMA table_info(comics);
+//
+// ---
+// Alternative: Use Payload API instead of direct D1 queries
+//
+// If you prefer to use Payload's API (more portable), you can:
+// 1. Import getPayload and config
+// 2. Use payload.find() with where clauses
+// 3. But this is slower and may hit Workers CPU limits
+//
+// Direct D1 is faster for this simple scheduled job.

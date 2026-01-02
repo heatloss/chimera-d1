@@ -1,0 +1,150 @@
+# GitHub Actions workflow for building and deploying comic static sites to PHP shared hosting
+#
+# This workflow is triggered by repository_dispatch events from the CMS.
+# It builds a single comic's static site using 11ty and uploads to the creator's PHP host.
+#
+# Trigger payload (from CMS):
+# {
+#   "event_type": "build-comic",
+#   "client_payload": {
+#     "comic_slug": "my-awesome-comic",
+#     "comic_id": 4,
+#     "deploy_url": "https://mycomic.com/deployer.php",
+#     "deploy_secret": "creator's-secret-key"
+#   }
+# }
+
+name: Build and Deploy Comic Site
+
+on:
+  repository_dispatch:
+    types: [build-comic]
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      comic_slug:
+        description: 'Comic slug to build'
+        required: true
+        type: string
+      comic_id:
+        description: 'Comic ID'
+        required: true
+        type: number
+      deploy_url:
+        description: 'Deployer URL (https://...)'
+        required: true
+        type: string
+      deploy_secret:
+        description: 'Deploy secret key'
+        required: true
+        type: string
+
+env:
+  CMS_API_URL: ${{ vars.CMS_API_URL }}
+  NODE_VERSION: '20'
+
+# Prevent multiple builds for the same comic running simultaneously
+# Uses comic_slug as the concurrency key
+concurrency:
+  group: deploy-${{ github.event.client_payload.comic_slug || inputs.comic_slug }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set variables from payload
+        id: vars
+        run: |
+          # Handle both repository_dispatch and workflow_dispatch triggers
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "comic_slug=${{ github.event.client_payload.comic_slug }}" >> $GITHUB_OUTPUT
+            echo "comic_id=${{ github.event.client_payload.comic_id }}" >> $GITHUB_OUTPUT
+            echo "deploy_url=${{ github.event.client_payload.deploy_url }}" >> $GITHUB_OUTPUT
+            echo "deploy_secret=${{ github.event.client_payload.deploy_secret }}" >> $GITHUB_OUTPUT
+          else
+            echo "comic_slug=${{ inputs.comic_slug }}" >> $GITHUB_OUTPUT
+            echo "comic_id=${{ inputs.comic_id }}" >> $GITHUB_OUTPUT
+            echo "deploy_url=${{ inputs.deploy_url }}" >> $GITHUB_OUTPUT
+            echo "deploy_secret=${{ inputs.deploy_secret }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate inputs
+        run: |
+          if [ -z "${{ steps.vars.outputs.comic_slug }}" ]; then
+            echo "Error: comic_slug is required"
+            exit 1
+          fi
+          if [ -z "${{ steps.vars.outputs.deploy_url }}" ]; then
+            echo "Error: deploy_url is required"
+            exit 1
+          fi
+          if [ -z "${{ steps.vars.outputs.deploy_secret }}" ]; then
+            echo "Error: deploy_secret is required"
+            exit 1
+          fi
+          echo "Building: ${{ steps.vars.outputs.comic_slug }}"
+          echo "Deploy to: ${{ steps.vars.outputs.deploy_url }}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static site with 11ty
+        env:
+          COMIC_SLUG: ${{ steps.vars.outputs.comic_slug }}
+          COMIC_ID: ${{ steps.vars.outputs.comic_id }}
+          CMS_API_TOKEN: ${{ secrets.CMS_API_TOKEN }}
+        run: |
+          echo "🔨 Building site for comic: $COMIC_SLUG (ID: $COMIC_ID)"
+          npx @11ty/eleventy
+          echo "✅ Build complete"
+
+      - name: Deploy to PHP host
+        env:
+          DEPLOY_URL: ${{ steps.vars.outputs.deploy_url }}
+          DEPLOY_SECRET: ${{ steps.vars.outputs.deploy_secret }}
+        run: |
+          echo "📦 Deploying to: $DEPLOY_URL"
+          node scripts/deploy-to-host.js
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Comic:** ${{ steps.vars.outputs.comic_slug }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed to:** ${{ steps.vars.outputs.deploy_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Failure Summary
+        if: failure()
+        run: |
+          echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Comic:** ${{ steps.vars.outputs.comic_slug }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target:** ${{ steps.vars.outputs.deploy_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for error details." >> $GITHUB_STEP_SUMMARY
+
+
+# ---
+# Required repository secrets:
+# - CMS_API_TOKEN: API token for authenticated CMS endpoints (if needed)
+#
+# Required repository variables:
+# - CMS_API_URL: Base URL of CMS API (e.g., https://api.chimeracomics.org)
+#
+# Note: deploy_url and deploy_secret come from the webhook payload,
+# not from repository secrets. This allows each comic to have its own
+# deployment target without storing all creators' secrets in the repo.

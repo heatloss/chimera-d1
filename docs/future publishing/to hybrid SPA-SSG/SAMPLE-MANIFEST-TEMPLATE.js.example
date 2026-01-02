@@ -1,0 +1,156 @@
+/**
+ * 11ty Template: Generate manifest.json for SPA Reader
+ *
+ * This file goes in: src/manifest.11ty.js
+ *
+ * It outputs a JSON file containing all the data the SPA reader needs
+ * to provide swipe navigation without additional API calls.
+ *
+ * The manifest includes:
+ * - Comic metadata
+ * - Chapter structure
+ * - All pages with image URLs and metadata
+ * - Navigation helpers
+ */
+
+class ManifestTemplate {
+  data() {
+    return {
+      // Output as JSON file at site root
+      permalink: '/manifest.json',
+
+      // Exclude from sitemap and collections
+      eleventyExcludeFromCollections: true,
+    }
+  }
+
+  render(data) {
+    const { comic, chapters, pages } = data
+
+    // Filter to only published pages (shouldn't be any unpublished in build, but safety first)
+    const publishedPages = pages.filter((page) => {
+      if (page.status !== 'published') return false
+      if (!page.publishedDate) return false
+      return new Date(page.publishedDate) <= new Date()
+    })
+
+    // Sort pages by pageNumber
+    const sortedPages = publishedPages.sort((a, b) => a.pageNumber - b.pageNumber)
+
+    // Build chapter data with page ranges
+    const chapterData = chapters
+      .sort((a, b) => a.chapterNumber - b.chapterNumber)
+      .map((chapter) => {
+        const chapterPages = sortedPages.filter((p) => p.chapter?.id === chapter.id)
+        const pageNumbers = chapterPages.map((p) => p.pageNumber)
+
+        return {
+          id: chapter.id,
+          title: chapter.title,
+          number: chapter.chapterNumber,
+          startPage: Math.min(...pageNumbers) || null,
+          endPage: Math.max(...pageNumbers) || null,
+          pageCount: chapterPages.length,
+        }
+      })
+      .filter((ch) => ch.startPage !== null) // Exclude empty chapters
+
+    // Build page data (minimal fields for reader)
+    const pageData = sortedPages.map((page) => {
+      // Find which chapter this page belongs to
+      const chapter = chapterData.find(
+        (ch) => page.pageNumber >= ch.startPage && page.pageNumber <= ch.endPage
+      )
+
+      return {
+        number: page.pageNumber,
+        chapter: chapter?.number || null,
+
+        // Image URLs - adjust based on your media URL structure
+        image: page.pageImage?.url || page.pageImage?.filename
+          ? `/media/${page.pageImage.filename}`
+          : null,
+        thumbnail: page.thumbnailImage?.url || page.thumbnailImage?.filename
+          ? `/media/${page.thumbnailImage.filename}`
+          : null,
+
+        // Dimensions for aspect ratio calculation (prevents layout shift)
+        width: page.pageImage?.width || null,
+        height: page.pageImage?.height || null,
+
+        // Optional metadata
+        title: page.title || null,
+        altText: page.altText || null,
+        authorNote: page.authorNote || null,
+
+        // Publish date (for "new" badges, sorting)
+        publishedDate: page.publishedDate || null,
+      }
+    })
+
+    // Build the manifest object
+    const manifest = {
+      // Version timestamp for cache invalidation
+      version: new Date().toISOString(),
+
+      // Comic metadata
+      comic: {
+        id: comic.id,
+        slug: comic.slug,
+        title: comic.title,
+        tagline: comic.tagline || null,
+        description: comic.description || null,
+        author: comic.author || null,
+        thumbnail: comic.thumbnail?.filename
+          ? `/media/${comic.thumbnail.filename}`
+          : null,
+        // Reading direction (for manga-style right-to-left)
+        readingDirection: comic.readingDirection || 'ltr',
+      },
+
+      // Chapter structure
+      chapters: chapterData,
+
+      // All pages
+      pages: pageData,
+
+      // Navigation helpers
+      navigation: {
+        firstPage: sortedPages.length > 0 ? sortedPages[0].pageNumber : null,
+        lastPage: sortedPages.length > 0 ? sortedPages[sortedPages.length - 1].pageNumber : null,
+        totalPages: sortedPages.length,
+        totalChapters: chapterData.length,
+      },
+    }
+
+    // Output as formatted JSON (could use unformatted for smaller size)
+    return JSON.stringify(manifest, null, 2)
+  }
+}
+
+module.exports = ManifestTemplate
+
+
+// ---
+// Alternative: Nunjucks template approach
+//
+// If you prefer Nunjucks, create src/manifest.njk:
+//
+// ---
+// permalink: /manifest.json
+// eleventyExcludeFromCollections: true
+// ---
+// {{ manifest | dump | safe }}
+//
+// Then create src/_data/manifest.js that exports the manifest object.
+// The JavaScript class approach above gives more control over the output.
+//
+// ---
+// Data dependency
+//
+// This template expects these data files to exist:
+// - src/_data/comic.js - fetches comic metadata from CMS
+// - src/_data/chapters.js - fetches chapters from CMS
+// - src/_data/pages.js - fetches pages from CMS
+//
+// See SAMPLE-11TY-DATA.js.example in the "to Node-based host" folder.

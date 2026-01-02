@@ -1,0 +1,203 @@
+/**
+ * R2 Upload Script
+ *
+ * Uploads the built 11ty site to Cloudflare R2.
+ * This runs as the final step in the GitHub Actions workflow.
+ *
+ * This file goes in: scripts/upload-to-r2.js
+ *
+ * Environment variables:
+ * - COMIC_SLUG: The slug of the comic (determines R2 prefix)
+ * - R2_ACCOUNT_ID: Cloudflare account ID
+ * - R2_ACCESS_KEY_ID: R2 API token access key
+ * - R2_SECRET_ACCESS_KEY: R2 API token secret
+ * - R2_BUCKET_NAME: Name of the R2 bucket
+ */
+
+const { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } = require('@aws-sdk/client-s3')
+const fs = require('fs')
+const path = require('path')
+const mime = require('mime-types')
+
+// Configuration from environment
+const config = {
+  comicSlug: process.env.COMIC_SLUG,
+  accountId: process.env.R2_ACCOUNT_ID,
+  accessKeyId: process.env.R2_ACCESS_KEY_ID,
+  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  bucketName: process.env.R2_BUCKET_NAME,
+  buildDir: process.env.BUILD_DIR || '_site',
+}
+
+// Validate required config
+const required = ['comicSlug', 'accountId', 'accessKeyId', 'secretAccessKey', 'bucketName']
+for (const key of required) {
+  if (!config[key]) {
+    console.error(`Missing required environment variable: ${key.toUpperCase().replace(/([A-Z])/g, '_$1')}`)
+    process.exit(1)
+  }
+}
+
+// Initialize S3 client for R2
+const s3Client = new S3Client({
+  region: 'auto',
+  endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+  },
+})
+
+// R2 prefix for this comic's site
+const sitePrefix = `sites/${config.comicSlug}/`
+
+/**
+ * Recursively get all files in a directory
+ */
+function getAllFiles(dirPath, arrayOfFiles = []) {
+  const files = fs.readdirSync(dirPath)
+
+  for (const file of files) {
+    const filePath = path.join(dirPath, file)
+    if (fs.statSync(filePath).isDirectory()) {
+      getAllFiles(filePath, arrayOfFiles)
+    } else {
+      arrayOfFiles.push(filePath)
+    }
+  }
+
+  return arrayOfFiles
+}
+
+/**
+ * Upload a single file to R2
+ */
+async function uploadFile(localPath, r2Key) {
+  const fileContent = fs.readFileSync(localPath)
+  const contentType = mime.lookup(localPath) || 'application/octet-stream'
+
+  const command = new PutObjectCommand({
+    Bucket: config.bucketName,
+    Key: r2Key,
+    Body: fileContent,
+    ContentType: contentType,
+  })
+
+  await s3Client.send(command)
+  console.log(`  Uploaded: ${r2Key}`)
+}
+
+/**
+ * Delete all objects with the site prefix (clean deploy)
+ */
+async function cleanExistingFiles() {
+  console.log(`Cleaning existing files at ${sitePrefix}...`)
+
+  let continuationToken = undefined
+  let deletedCount = 0
+
+  do {
+    // List objects with the prefix
+    const listCommand = new ListObjectsV2Command({
+      Bucket: config.bucketName,
+      Prefix: sitePrefix,
+      ContinuationToken: continuationToken,
+    })
+
+    const listResponse = await s3Client.send(listCommand)
+
+    if (listResponse.Contents && listResponse.Contents.length > 0) {
+      // Delete the objects
+      const deleteCommand = new DeleteObjectsCommand({
+        Bucket: config.bucketName,
+        Delete: {
+          Objects: listResponse.Contents.map((obj) => ({ Key: obj.Key })),
+        },
+      })
+
+      await s3Client.send(deleteCommand)
+      deletedCount += listResponse.Contents.length
+    }
+
+    continuationToken = listResponse.NextContinuationToken
+  } while (continuationToken)
+
+  console.log(`  Deleted ${deletedCount} existing files`)
+}
+
+/**
+ * Main upload function
+ */
+async function main() {
+  console.log(`\nUploading ${config.comicSlug} to R2...`)
+  console.log(`  Source: ${config.buildDir}/`)
+  console.log(`  Destination: ${config.bucketName}/${sitePrefix}`)
+
+  // Verify build directory exists
+  if (!fs.existsSync(config.buildDir)) {
+    console.error(`Build directory not found: ${config.buildDir}`)
+    process.exit(1)
+  }
+
+  // Clean existing files (atomic-ish deploy)
+  await cleanExistingFiles()
+
+  // Get all files to upload
+  const files = getAllFiles(config.buildDir)
+  console.log(`\nUploading ${files.length} files...`)
+
+  // Upload all files
+  let uploadedCount = 0
+  const errors = []
+
+  for (const localPath of files) {
+    // Convert local path to R2 key
+    const relativePath = path.relative(config.buildDir, localPath)
+    const r2Key = sitePrefix + relativePath.replace(/\\/g, '/') // Handle Windows paths
+
+    try {
+      await uploadFile(localPath, r2Key)
+      uploadedCount++
+    } catch (error) {
+      console.error(`  Failed: ${r2Key} - ${error.message}`)
+      errors.push({ file: r2Key, error: error.message })
+    }
+  }
+
+  // Summary
+  console.log(`\nUpload complete!`)
+  console.log(`  Uploaded: ${uploadedCount} files`)
+  if (errors.length > 0) {
+    console.log(`  Failed: ${errors.length} files`)
+    process.exit(1)
+  }
+
+  console.log(`\nSite available at: https://app.chimeracomics.org/comics/${config.comicSlug}/`)
+}
+
+main().catch((error) => {
+  console.error('Upload failed:', error)
+  process.exit(1)
+})
+
+
+// ---
+// Dependencies (add to package.json):
+//
+// {
+//   "dependencies": {
+//     "@aws-sdk/client-s3": "^3.x",
+//     "mime-types": "^2.x"
+//   }
+// }
+//
+// ---
+// VPS Migration Note:
+//
+// On a VPS, this script would simply copy files to the filesystem:
+//
+// const destDir = `/var/www/sites/${config.comicSlug}/`
+// fs.cpSync(config.buildDir, destDir, { recursive: true })
+//
+// Or use rsync for more efficient incremental updates:
+// rsync -av --delete _site/ /var/www/sites/${COMIC_SLUG}/

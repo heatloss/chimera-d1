@@ -1,0 +1,212 @@
+/**
+ * Static Site Serving Worker
+ *
+ * Serves static comic sites from R2 storage at app.chimeracomics.org
+ *
+ * Routes:
+ * - /comics/{slug}/*  → R2: /sites/{slug}/*
+ * - /*                → R2: /sites/_main/*
+ *
+ * Wrangler configuration (wrangler.toml):
+ *
+ * name = "chimera-static-sites"
+ * main = "src/index.ts"
+ *
+ * [[r2_buckets]]
+ * binding = "SITES_BUCKET"
+ * bucket_name = "chimera-static-sites"
+ *
+ * [vars]
+ * CACHE_TTL = "3600"  # 1 hour default cache
+ */
+
+interface Env {
+  SITES_BUCKET: R2Bucket
+  CACHE_TTL: string
+}
+
+// Content type mappings
+const CONTENT_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.xml': 'application/xml',
+  '.txt': 'text/plain; charset=utf-8',
+}
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url)
+    let path = url.pathname
+
+    // Determine the R2 key based on the path
+    let r2Key: string
+
+    if (path.startsWith('/comics/')) {
+      // Extract comic slug and remaining path
+      // /comics/my-comic/page/1/ → sites/my-comic/page/1/
+      const comicPath = path.slice('/comics/'.length)
+      r2Key = `sites/${comicPath}`
+    } else {
+      // Main site: / → sites/_main/
+      r2Key = `sites/_main${path}`
+    }
+
+    // Normalize the key
+    r2Key = normalizeKey(r2Key)
+
+    // Try to fetch from R2
+    const object = await env.SITES_BUCKET.get(r2Key)
+
+    if (!object) {
+      // Try index.html for directory paths
+      if (!r2Key.endsWith('.html')) {
+        const indexKey = r2Key.endsWith('/') ? `${r2Key}index.html` : `${r2Key}/index.html`
+        const indexObject = await env.SITES_BUCKET.get(indexKey)
+
+        if (indexObject) {
+          return buildResponse(indexObject, indexKey, env)
+        }
+      }
+
+      // Return 404 page
+      return await serve404(env, path)
+    }
+
+    return buildResponse(object, r2Key, env)
+  },
+}
+
+/**
+ * Normalize the R2 key
+ */
+function normalizeKey(key: string): string {
+  // Remove double slashes
+  key = key.replace(/\/+/g, '/')
+
+  // Remove leading slash (R2 keys don't start with /)
+  if (key.startsWith('/')) {
+    key = key.slice(1)
+  }
+
+  return key
+}
+
+/**
+ * Build the HTTP response from an R2 object
+ */
+function buildResponse(object: R2ObjectBody, key: string, env: Env): Response {
+  const headers = new Headers()
+
+  // Set content type based on file extension
+  const ext = key.substring(key.lastIndexOf('.'))
+  const contentType = CONTENT_TYPES[ext] || 'application/octet-stream'
+  headers.set('Content-Type', contentType)
+
+  // Set content length if available
+  if (object.size) {
+    headers.set('Content-Length', object.size.toString())
+  }
+
+  // Set caching headers
+  const cacheTTL = parseInt(env.CACHE_TTL || '3600', 10)
+
+  if (key.endsWith('.html')) {
+    // HTML files: shorter cache, allow revalidation
+    headers.set('Cache-Control', `public, max-age=300, s-maxage=${cacheTTL}`)
+  } else if (ext.match(/\.(css|js)$/)) {
+    // CSS/JS: longer cache (assumes cache-busted filenames)
+    headers.set('Cache-Control', `public, max-age=31536000, immutable`)
+  } else if (ext.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf)$/)) {
+    // Static assets: long cache
+    headers.set('Cache-Control', `public, max-age=31536000, immutable`)
+  } else {
+    // Default
+    headers.set('Cache-Control', `public, max-age=${cacheTTL}`)
+  }
+
+  // Set ETag if available
+  if (object.etag) {
+    headers.set('ETag', object.etag)
+  }
+
+  return new Response(object.body, {
+    status: 200,
+    headers,
+  })
+}
+
+/**
+ * Serve a 404 page
+ */
+async function serve404(env: Env, originalPath: string): Promise<Response> {
+  // Try to serve a custom 404 page from the comic's directory
+  if (originalPath.startsWith('/comics/')) {
+    const slug = originalPath.split('/')[2]
+    if (slug) {
+      const custom404 = await env.SITES_BUCKET.get(`sites/${slug}/404.html`)
+      if (custom404) {
+        return new Response(custom404.body, {
+          status: 404,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+          },
+        })
+      }
+    }
+  }
+
+  // Try main site 404
+  const main404 = await env.SITES_BUCKET.get('sites/_main/404.html')
+  if (main404) {
+    return new Response(main404.body, {
+      status: 404,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+      },
+    })
+  }
+
+  // Fallback plain text 404
+  return new Response('Not Found', {
+    status: 404,
+    headers: {
+      'Content-Type': 'text/plain',
+    },
+  })
+}
+
+
+// ---
+// VPS Migration Note:
+//
+// This Worker's logic maps directly to nginx configuration:
+//
+// server {
+//     listen 80;
+//     server_name app.chimeracomics.org;
+//     root /var/www/sites;
+//
+//     location /comics/ {
+//         alias /var/www/sites/;
+//         try_files $uri $uri/ $uri/index.html =404;
+//     }
+//
+//     location / {
+//         root /var/www/sites/_main;
+//         try_files $uri $uri/ $uri/index.html =404;
+//     }
+//
+//     error_page 404 /404.html;
+// }

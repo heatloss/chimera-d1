@@ -163,7 +163,7 @@ export const Chapters: CollectionConfig = {
       required: false, // Auto-assigned by hook
       label: 'Chapter Order',
       admin: {
-        description: 'Chapter order (read-only). To move: POST /api/move-chapter with chapterId and direction ("up"/"down")',
+        description: 'Chapter order (read-only). Use POST /api/reorder-chapters to reorder chapters.',
         position: 'sidebar',
         readOnly: true, // Users can't edit directly
       },

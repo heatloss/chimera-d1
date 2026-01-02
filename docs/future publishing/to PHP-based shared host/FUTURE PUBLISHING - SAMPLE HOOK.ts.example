@@ -1,0 +1,152 @@
+/**
+ * afterChange Hook for Pages Collection
+ *
+ * Triggers a rebuild when a creator edits a page that's already live
+ * (status = 'published' and publishedDate <= now).
+ *
+ * This handles:
+ * - Typo fixes
+ * - Image replacements
+ * - Author notes updates
+ * - Any edit to already-visible content
+ *
+ * Add this to the Pages collection hooks in src/collections/Pages.ts
+ */
+
+import type { CollectionAfterChangeHook } from 'payload'
+
+// Types for the page document
+interface PageDoc {
+  id: number
+  comic: number | { id: number; slug: string; deployment?: DeploymentConfig }
+  status: 'draft' | 'scheduled' | 'published'
+  publishedDate?: string
+}
+
+interface DeploymentConfig {
+  deployUrl?: string
+  deploySecret?: string
+  lastBuiltAt?: string
+}
+
+/**
+ * Hook: Trigger rebuild on live page edit
+ */
+export const triggerRebuildOnEdit: CollectionAfterChangeHook<PageDoc> = async ({
+  doc,
+  previousDoc,
+  operation,
+  req,
+}) => {
+  // Only trigger on updates (not creates)
+  if (operation !== 'update') return doc
+
+  // Check if page is live (published with past/current date)
+  const isPublished = doc.status === 'published'
+  const publishedDate = doc.publishedDate ? new Date(doc.publishedDate) : null
+  const isLive = isPublished && publishedDate && publishedDate <= new Date()
+
+  if (!isLive) return doc
+
+  // Get the comic with deployment settings
+  const comicId = typeof doc.comic === 'object' ? doc.comic.id : doc.comic
+
+  try {
+    const comic = await req.payload.findByID({
+      collection: 'comics',
+      id: comicId,
+      depth: 0,
+    })
+
+    if (!comic) {
+      console.warn(`Comic ${comicId} not found for rebuild trigger`)
+      return doc
+    }
+
+    // Check if deployment is configured
+    const deployment = (comic as any).deployment as DeploymentConfig | undefined
+    if (!deployment?.deployUrl || !deployment?.deploySecret) {
+      console.log(`Comic ${comic.slug}: No deployment configured, skipping rebuild`)
+      return doc
+    }
+
+    // Trigger the build
+    console.log(`📤 Triggering rebuild for comic: ${comic.slug} (live page edited)`)
+    await triggerGitHubBuild({
+      comicSlug: comic.slug,
+      comicId: comic.id,
+      deployUrl: deployment.deployUrl,
+      deploySecret: deployment.deploySecret,
+    })
+
+  } catch (error) {
+    console.error('Error triggering rebuild:', error)
+    // Don't throw - let the page save succeed even if rebuild trigger fails
+  }
+
+  return doc
+}
+
+/**
+ * Helper: Trigger GitHub Actions build via repository_dispatch
+ */
+async function triggerGitHubBuild(params: {
+  comicSlug: string
+  comicId: number
+  deployUrl: string
+  deploySecret: string
+}): Promise<void> {
+  const githubToken = process.env.GITHUB_TOKEN
+  const githubRepo = process.env.GITHUB_REPO // e.g., "username/chimera-comic-ssg"
+
+  if (!githubToken || !githubRepo) {
+    console.error('Missing GITHUB_TOKEN or GITHUB_REPO environment variables')
+    return
+  }
+
+  const response = await fetch(
+    `https://api.github.com/repos/${githubRepo}/dispatches`,
+    {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${githubToken}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'Chimera-CMS',
+      },
+      body: JSON.stringify({
+        event_type: 'build-comic',
+        client_payload: {
+          comic_slug: params.comicSlug,
+          comic_id: params.comicId,
+          deploy_url: params.deployUrl,
+          deploy_secret: params.deploySecret,
+        },
+      }),
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`GitHub API error: ${response.status} ${text}`)
+  }
+
+  console.log(`✅ Build triggered for ${params.comicSlug}`)
+}
+
+
+// ---
+// Usage: Add to Pages collection config
+//
+// import { triggerRebuildOnEdit } from './hooks/triggerRebuildOnEdit'
+//
+// export const Pages: CollectionConfig = {
+//   slug: 'pages',
+//   hooks: {
+//     afterChange: [
+//       triggerRebuildOnEdit,
+//       // ... other hooks
+//     ],
+//   },
+//   // ... rest of config
+// }

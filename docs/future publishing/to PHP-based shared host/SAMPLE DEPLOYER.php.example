@@ -1,0 +1,202 @@
+<?php
+/**
+ * Deployer Receiver Script for PHP Shared Hosting
+ *
+ * This script receives ZIP uploads from GitHub Actions and performs
+ * atomic deployments using symlink swapping.
+ *
+ * SETUP INSTRUCTIONS:
+ * 1. Upload this file to your hosting account (e.g., ~/deployer.php)
+ * 2. Change $SECRET_KEY to a long, random string
+ * 3. Verify the $webRoot path matches your hosting setup
+ * 4. Test by visiting the URL - it should show "Deployer ready"
+ * 5. Add the URL and secret to your comic's deployment settings in the CMS
+ *
+ * SECURITY:
+ * - Keep this file outside public_html if possible
+ * - Use a strong, unique secret key
+ * - Only accept HTTPS connections
+ * - Consider IP restrictions if your GitHub Actions runner IPs are known
+ */
+
+// =============================================================================
+// CONFIGURATION - EDIT THESE VALUES
+// =============================================================================
+
+// Secret key for authentication - CHANGE THIS!
+$SECRET_KEY = 'CHANGE_THIS_TO_A_LONG_RANDOM_STRING_minimum_32_characters';
+
+// Base directory (where releases folder will be created)
+// Usually one level above public_html
+$baseDir = dirname(__FILE__);
+
+// The folder the web server serves (will become a symlink)
+// Common values: 'public_html', 'www', 'htdocs', or a subdomain folder
+$webRoot = $baseDir . '/public_html';
+
+// Number of old releases to keep (for rollback capability)
+$keepReleases = 5;
+
+// =============================================================================
+// END CONFIGURATION
+// =============================================================================
+
+// Show status for GET requests (useful for testing)
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    header('Content-Type: text/plain');
+    echo "Deployer ready\n";
+    echo "Web root: " . basename($webRoot) . "\n";
+    echo "POST with 'secret' and 'bundle' (ZIP file) to deploy.\n";
+    exit;
+}
+
+// Only accept POST requests for deployment
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    die('Method not allowed');
+}
+
+// Validate secret key
+if (!isset($_POST['secret']) || $_POST['secret'] !== $SECRET_KEY) {
+    http_response_code(403);
+    error_log('Deployer: Invalid or missing secret key');
+    die('Forbidden: Invalid key');
+}
+
+// Validate file upload
+if (!isset($_FILES['bundle']) || $_FILES['bundle']['error'] !== UPLOAD_ERR_OK) {
+    $errorCode = isset($_FILES['bundle']) ? $_FILES['bundle']['error'] : 'missing';
+    http_response_code(400);
+    error_log("Deployer: File upload error - $errorCode");
+    die("Bad request: File upload failed (error: $errorCode)");
+}
+
+// Validate it's a ZIP file
+$finfo = finfo_open(FILEINFO_MIME_TYPE);
+$mimeType = finfo_file($finfo, $_FILES['bundle']['tmp_name']);
+finfo_close($finfo);
+
+if ($mimeType !== 'application/zip' && $mimeType !== 'application/x-zip-compressed') {
+    http_response_code(400);
+    error_log("Deployer: Invalid file type - $mimeType");
+    die("Bad request: Expected ZIP file, got $mimeType");
+}
+
+// Setup directories
+$releasesDir = $baseDir . '/releases';
+
+if (!is_dir($releasesDir)) {
+    if (!mkdir($releasesDir, 0755, true)) {
+        http_response_code(500);
+        die('Failed to create releases directory');
+    }
+}
+
+// Create timestamped release folder
+$releaseName = date('Ymd-His');
+$releaseDir = $releasesDir . '/' . $releaseName;
+$zipPath = $releasesDir . '/' . $releaseName . '.zip';
+
+// Move uploaded file
+if (!move_uploaded_file($_FILES['bundle']['tmp_name'], $zipPath)) {
+    http_response_code(500);
+    error_log('Deployer: Failed to move uploaded file');
+    die('Failed to save uploaded file');
+}
+
+// Extract ZIP
+$zip = new ZipArchive();
+$result = $zip->open($zipPath);
+
+if ($result !== true) {
+    unlink($zipPath);
+    http_response_code(500);
+    error_log("Deployer: Failed to open ZIP - error code $result");
+    die("Failed to open ZIP file (error: $result)");
+}
+
+if (!mkdir($releaseDir, 0755, true)) {
+    $zip->close();
+    unlink($zipPath);
+    http_response_code(500);
+    die('Failed to create release directory');
+}
+
+if (!$zip->extractTo($releaseDir)) {
+    $zip->close();
+    unlink($zipPath);
+    rmdir($releaseDir);
+    http_response_code(500);
+    error_log('Deployer: Failed to extract ZIP');
+    die('Failed to extract ZIP file');
+}
+
+$zip->close();
+unlink($zipPath); // Clean up ZIP file
+
+// Atomic symlink swap
+// Strategy: create new symlink with temp name, then rename (atomic on most filesystems)
+$tempLink = $baseDir . '/public_html_new_' . $releaseName;
+
+// Create new symlink
+if (!symlink($releaseDir, $tempLink)) {
+    http_response_code(500);
+    error_log('Deployer: Failed to create new symlink');
+    die('Failed to create symlink');
+}
+
+// Handle existing web root
+if (is_link($webRoot)) {
+    // It's already a symlink - just replace it
+    unlink($webRoot);
+} elseif (is_dir($webRoot)) {
+    // It's a real directory - back it up (first deploy scenario)
+    $backupName = $webRoot . '_original_' . date('Ymd-His');
+    if (!rename($webRoot, $backupName)) {
+        unlink($tempLink);
+        http_response_code(500);
+        die('Failed to backup existing web root');
+    }
+    error_log("Deployer: Backed up original web root to $backupName");
+}
+
+// Rename temp symlink to actual web root (atomic operation)
+if (!rename($tempLink, $webRoot)) {
+    http_response_code(500);
+    error_log('Deployer: Failed to rename symlink');
+    die('Failed to activate new release');
+}
+
+// Clean up old releases (keep last N)
+$releases = glob($releasesDir . '/*', GLOB_ONLYDIR);
+usort($releases, function($a, $b) {
+    return filemtime($b) - filemtime($a); // Newest first
+});
+
+$releasesToDelete = array_slice($releases, $keepReleases);
+foreach ($releasesToDelete as $oldRelease) {
+    // Don't delete the currently active release
+    if (realpath($oldRelease) === realpath($releaseDir)) {
+        continue;
+    }
+
+    // Recursively delete old release
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($oldRelease, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+
+    foreach ($iterator as $file) {
+        if ($file->isDir()) {
+            rmdir($file->getRealPath());
+        } else {
+            unlink($file->getRealPath());
+        }
+    }
+    rmdir($oldRelease);
+}
+
+// Success!
+$message = "Deployed successfully to release $releaseName";
+error_log("Deployer: $message");
+echo $message;

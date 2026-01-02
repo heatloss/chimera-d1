@@ -4,7 +4,7 @@
 
 A webcomic content management system built on Payload CMS v3, deployed on Cloudflare Workers with D1 database and R2 storage. This API provides complete backend functionality for managing webcomic series, chapters, pages, users, and media assets with role-based access control.
 
-**Current Version**: December 2024 (Payload v3.69.0)
+**Current Version**: January 2025 (Payload v3.69.0)
 
 ## Base URLs
 
@@ -139,6 +139,16 @@ Webcomic series management.
   "genres": [1, 2, 3], // Integer IDs from genres collection (or full objects if populated)
   "tags": [1, 4], // Integer IDs from tags collection (or full objects if populated)
   "isNSFW": false,
+  "seoMeta": {
+    "metaTitle": "My Awesome Comic - A Fantasy Adventure",
+    "metaDescription": "Follow the journey of...",
+    "socialImage": 6 // Integer ID of media (or full object if populated)
+  },
+  "stats": {
+    "totalPages": 45,
+    "totalChapters": 3,
+    "lastPagePublished": "2024-01-15T10:30:00Z"
+  },
   "createdAt": "2024-01-01T00:00:00Z",
   "updatedAt": "2024-01-15T10:30:00Z"
 }
@@ -192,8 +202,9 @@ Individual comic page management.
   "chapterPageNumber": 1, // Page number within chapter (1-based, auto-assigned)
   "globalPageNumber": 15, // Auto-calculated sequential number across entire comic (1-based)
   "title": "Optional page title",
-  "displayTitle": "Chapter Title - Page 0: Optional Title", // Auto-generated
+  "displayTitle": "Chapter Title - Page 1: Optional Title", // Auto-generated
   "pageImage": 20, // Integer ID of media
+  "thumbnailImage": 20, // Integer ID of media (auto-populated from pageImage if empty)
   "pageExtraImages": [
     {
       "image": 21, // Integer ID of media
@@ -204,6 +215,22 @@ Individual comic page management.
   "authorNotes": "Author commentary and notes",
   "status": "draft|scheduled|published",
   "publishedDate": "2024-01-15T10:30:00Z",
+  "navigation": {
+    "previousPage": 9, // Integer ID of previous page (or null)
+    "nextPage": 11, // Integer ID of next page (or null)
+    "isFirstPage": false,
+    "isLastPage": false
+  },
+  "seoMeta": {
+    "slug": "optional-page-title",
+    "metaTitle": "Page 15 - My Awesome Comic",
+    "metaDescription": "Description of what happens in this page"
+  },
+  "stats": {
+    "viewCount": 142,
+    "firstViewed": "2024-01-15T12:00:00Z",
+    "lastViewed": "2024-01-20T08:30:00Z"
+  },
   "createdAt": "2024-01-01T00:00:00Z",
   "updatedAt": "2024-01-15T10:30:00Z"
 }
@@ -232,6 +259,16 @@ Organizational containers for comic pages, grouped by story arcs or sections.
   "order": 1, // Display order (auto-assigned, reorderable via API)
   "description": "Optional chapter summary",
   "coverImage": 5, // Integer ID of media
+  "seoMeta": {
+    "slug": "the-beginning",
+    "metaTitle": "Chapter 1: The Beginning",
+    "metaDescription": "Our hero's journey starts here..."
+  },
+  "stats": {
+    "pageCount": 15, // Number of pages in this chapter
+    "firstPageNumber": 1, // Global page number of first page
+    "lastPageNumber": 15 // Global page number of last page
+  },
   "createdAt": "2024-01-01T00:00:00Z",
   "updatedAt": "2024-01-15T10:30:00Z"
 }
@@ -418,7 +455,7 @@ Authorization: Bearer jwt_token
       "pages": [
         {
           "id": 10,
-          "chapterPageNumber": 0, // Chapter cover page
+          "chapterPageNumber": 1, // First page in chapter
           "globalPageNumber": 1,
           "title": null,
           "pageImage": 20,
@@ -428,7 +465,7 @@ Authorization: Bearer jwt_token
         },
         {
           "id": 11,
-          "chapterPageNumber": 1, // First regular page
+          "chapterPageNumber": 2, // Second page in chapter
           "globalPageNumber": 2,
           "title": "The Hero Awakens",
           "pageImage": 21,
@@ -619,7 +656,7 @@ file_1: [File object for second page]
       "mediaId": 40,
       "title": "The Hero's Journey",
       "filename": "hero-page-1.jpg",
-      "chapterPageNumber": 0,
+      "chapterPageNumber": 1,
       "globalPageNumber": 25
     },
     {
@@ -654,6 +691,118 @@ For each image `file_N`, the frontend can optionally provide:
 - `file_N_thumb_large` - 800px wide thumbnail
 
 When both thumbnails are provided, server-side Jimp processing is skipped entirely, eliminating the CPU bottleneck. If thumbnails are not provided, the server falls back to Jimp generation (limited to ~20 files due to CPU time limits).
+
+### Page Queries
+
+#### Get Pages with Media (`GET /api/pages-with-media`)
+
+Fetch pages with fully populated media objects (pageImage, thumbnailImage). This endpoint manually populates media relationships, which is useful when standard Payload depth parameter doesn't suffice.
+
+**Authentication Required**: Yes
+
+```javascript
+// Request
+GET /api/pages-with-media?chapter=2&sort=globalPageNumber&limit=50
+Authorization: Bearer jwt_token
+
+// Query Parameters (at least one required):
+// - chapter: Filter by chapter ID
+// - comic: Filter by comic ID
+// - page: Get a specific page by ID
+// - limit: Max results (default 500)
+// - sort: Sort field (default "globalPageNumber")
+```
+
+```json
+// Response
+{
+  "docs": [
+    {
+      "id": 10,
+      "chapterPageNumber": 1,
+      "globalPageNumber": 15,
+      "pageImage": {
+        "id": 20,
+        "filename": "page-001.jpg",
+        "url": "/api/media/file/page-001.jpg",
+        "imageSizes": {
+          "thumbnail": { "url": "/api/media/file/page-001-400w.jpg", "width": 400 },
+          "thumbnail_large": { "url": "/api/media/file/page-001-800w.jpg", "width": 800 }
+        }
+      },
+      "thumbnailImage": { /* ... populated media object ... */ }
+      // ... other page fields
+    }
+  ],
+  "totalDocs": 15,
+  "limit": 50,
+  "totalPages": 1,
+  "page": 1,
+  "hasPrevPage": false,
+  "hasNextPage": false
+}
+```
+
+**Features:**
+- Returns pages with fully populated media objects
+- Supports filtering by chapter, comic, or specific page ID
+- Requires authentication
+- Returns 400 if no filter parameter provided
+
+### Admin Utilities
+
+#### Recalculate Chapter Stats (`POST /api/recalculate-chapter-stats`)
+
+Admin utility to recalculate chapter statistics (pageCount, firstPageNumber, lastPageNumber) for chapters. Useful after bulk operations or data migrations.
+
+**Authentication Required**: Admin or Editor role
+
+```json
+// Request - Recalculate for specific comic
+POST /api/recalculate-chapter-stats
+Authorization: Bearer jwt_token
+{
+  "comicId": 4
+}
+
+// Request - Recalculate ALL chapters
+POST /api/recalculate-chapter-stats
+Authorization: Bearer jwt_token
+{
+  "all": true
+}
+
+// Response
+{
+  "success": true,
+  "message": "Recalculated stats for 5 chapters (0 failed)",
+  "results": [
+    {
+      "chapterId": 1,
+      "title": "The Beginning",
+      "pageCount": 15,
+      "firstPageNumber": 1,
+      "lastPageNumber": 15,
+      "success": true
+    },
+    {
+      "chapterId": 2,
+      "title": "The Journey",
+      "pageCount": 12,
+      "firstPageNumber": 16,
+      "lastPageNumber": 27,
+      "success": true
+    }
+    // ... more chapters
+  ]
+}
+```
+
+**Features:**
+- Recalculates pageCount, firstPageNumber, and lastPageNumber for each chapter
+- Can target a specific comic or all chapters system-wide
+- Returns detailed results for each chapter processed
+- Admin or Editor role required
 
 ## Common Query Patterns
 
@@ -923,6 +1072,17 @@ Chimera CMS uses a dual numbering system for comic pages:
 **Impact**: Frontend should generate thumbnails using Canvas API for optimal bulk upload performance (50 files). Without client thumbnails, batch size is limited to ~20 files.
 
 ## Migration Notes
+
+### January 2025 Update
+- **Documentation update**: API specification now accurately reflects all collection fields
+  - Added `seoMeta` and `stats` groups to Comics data structure
+  - Added `seoMeta` and `stats` groups to Chapters data structure
+  - Added `thumbnailImage`, `navigation`, `seoMeta`, and `stats` groups to Pages data structure
+- **New endpoints documented**:
+  - `GET /api/pages-with-media` - Fetch pages with fully populated media objects
+  - `POST /api/recalculate-chapter-stats` - Admin utility to recalculate chapter statistics
+- **Fixed examples**: Updated all page numbering examples to reflect 1-based system (was showing 0-based in some places)
+- **Fixed Chapters collection**: Corrected admin description that incorrectly referenced non-existent `/api/move-chapter` endpoint
 
 ### Late December 2024 Update (v3.69.0)
 - Upgraded to Payload v3.69.0

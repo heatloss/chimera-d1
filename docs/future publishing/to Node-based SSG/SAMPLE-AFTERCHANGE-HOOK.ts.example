@@ -1,0 +1,147 @@
+/**
+ * afterChange Hook for Pages Collection (R2 Deployment)
+ *
+ * Triggers a rebuild when a creator edits a page that's already live
+ * (status = 'published' and publishedDate <= now).
+ *
+ * This handles:
+ * - Typo fixes
+ * - Image replacements
+ * - Author notes updates
+ * - Any edit to already-visible content
+ *
+ * This version is for R2 deployment (all comics on one platform).
+ * Unlike the PHP version, it doesn't need per-comic deploy URLs.
+ *
+ * Add this to the Pages collection hooks in src/collections/Pages.ts
+ */
+
+import type { CollectionAfterChangeHook } from 'payload'
+
+// Types for the page document
+interface PageDoc {
+  id: number
+  comic: number | { id: number; slug: string }
+  status: 'draft' | 'scheduled' | 'published'
+  publishedDate?: string
+}
+
+/**
+ * Hook: Trigger rebuild on live page edit
+ */
+export const triggerRebuildOnEdit: CollectionAfterChangeHook<PageDoc> = async ({
+  doc,
+  previousDoc,
+  operation,
+  req,
+}) => {
+  // Only trigger on updates (not creates)
+  if (operation !== 'update') return doc
+
+  // Check if page is live (published with past/current date)
+  const isPublished = doc.status === 'published'
+  const publishedDate = doc.publishedDate ? new Date(doc.publishedDate) : null
+  const isLive = isPublished && publishedDate && publishedDate <= new Date()
+
+  if (!isLive) return doc
+
+  // Get the comic info
+  const comicId = typeof doc.comic === 'object' ? doc.comic.id : doc.comic
+
+  try {
+    const comic = await req.payload.findByID({
+      collection: 'comics',
+      id: comicId,
+      depth: 0,
+    })
+
+    if (!comic) {
+      console.warn(`Comic ${comicId} not found for rebuild trigger`)
+      return doc
+    }
+
+    // Trigger the build
+    console.log(`📤 Triggering rebuild for comic: ${comic.slug} (live page edited)`)
+    await triggerGitHubBuild({
+      comicSlug: comic.slug,
+      comicId: comic.id,
+    })
+
+  } catch (error) {
+    console.error('Error triggering rebuild:', error)
+    // Don't throw - let the page save succeed even if rebuild trigger fails
+  }
+
+  return doc
+}
+
+/**
+ * Helper: Trigger GitHub Actions build via repository_dispatch
+ *
+ * For R2 deployment, we only need comic_slug and comic_id.
+ * The workflow handles uploading to the correct R2 prefix.
+ */
+async function triggerGitHubBuild(params: {
+  comicSlug: string
+  comicId: number
+}): Promise<void> {
+  const githubToken = process.env.GITHUB_TOKEN
+  const githubRepo = process.env.GITHUB_REPO // e.g., "username/chimera-comic-ssg"
+
+  if (!githubToken || !githubRepo) {
+    console.error('Missing GITHUB_TOKEN or GITHUB_REPO environment variables')
+    return
+  }
+
+  const response = await fetch(
+    `https://api.github.com/repos/${githubRepo}/dispatches`,
+    {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${githubToken}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'Chimera-CMS',
+      },
+      body: JSON.stringify({
+        event_type: 'build-comic',
+        client_payload: {
+          comic_slug: params.comicSlug,
+          comic_id: params.comicId,
+        },
+      }),
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`GitHub API error: ${response.status} ${text}`)
+  }
+
+  console.log(`✅ Build triggered for ${params.comicSlug}`)
+}
+
+
+// ---
+// Usage: Add to Pages collection config
+//
+// import { triggerRebuildOnEdit } from './hooks/triggerRebuildOnEdit'
+//
+// export const Pages: CollectionConfig = {
+//   slug: 'pages',
+//   hooks: {
+//     afterChange: [
+//       triggerRebuildOnEdit,
+//       // ... other existing hooks
+//     ],
+//   },
+//   // ... rest of config
+// }
+//
+// ---
+// Environment variables needed:
+//
+// GITHUB_TOKEN - Personal access token with `repo` scope
+// GITHUB_REPO - Repository name, e.g., "username/chimera-comic-ssg"
+//
+// These can be set in wrangler.toml [vars] or as secrets.

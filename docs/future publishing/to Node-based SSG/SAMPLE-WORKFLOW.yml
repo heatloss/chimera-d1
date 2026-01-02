@@ -1,0 +1,103 @@
+# GitHub Actions workflow for building and deploying comic static sites
+#
+# This workflow is triggered by repository_dispatch events from the CMS.
+# It builds a single comic's static site using 11ty and uploads to R2.
+#
+# Trigger payload:
+# {
+#   "event_type": "build-comic",
+#   "client_payload": {
+#     "comic_slug": "my-awesome-comic",
+#     "comic_id": 4
+#   }
+# }
+
+name: Build Comic Site
+
+on:
+  repository_dispatch:
+    types: [build-comic]
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      comic_slug:
+        description: 'Comic slug to build'
+        required: true
+        type: string
+      comic_id:
+        description: 'Comic ID'
+        required: true
+        type: number
+
+env:
+  CMS_API_URL: ${{ vars.CMS_API_URL }}
+  NODE_VERSION: '20'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set comic variables
+        id: vars
+        run: |
+          # Handle both repository_dispatch and workflow_dispatch triggers
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "comic_slug=${{ github.event.client_payload.comic_slug }}" >> $GITHUB_OUTPUT
+            echo "comic_id=${{ github.event.client_payload.comic_id }}" >> $GITHUB_OUTPUT
+          else
+            echo "comic_slug=${{ inputs.comic_slug }}" >> $GITHUB_OUTPUT
+            echo "comic_id=${{ inputs.comic_id }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static site
+        env:
+          COMIC_SLUG: ${{ steps.vars.outputs.comic_slug }}
+          COMIC_ID: ${{ steps.vars.outputs.comic_id }}
+          CMS_API_TOKEN: ${{ secrets.CMS_API_TOKEN }}
+        run: |
+          echo "Building site for comic: $COMIC_SLUG (ID: $COMIC_ID)"
+          npx @11ty/eleventy
+
+      - name: Upload to R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ vars.R2_BUCKET_NAME }}
+          COMIC_SLUG: ${{ steps.vars.outputs.comic_slug }}
+        run: |
+          echo "Uploading to R2 at /sites/$COMIC_SLUG/"
+          node scripts/upload-to-r2.js
+
+      - name: Summary
+        run: |
+          echo "## Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Comic:** ${{ steps.vars.outputs.comic_slug }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** https://app.chimeracomics.org/comics/${{ steps.vars.outputs.comic_slug }}/" >> $GITHUB_STEP_SUMMARY
+
+
+# ---
+# Required repository secrets:
+# - CMS_API_TOKEN: API token for authenticated CMS endpoints (if needed)
+# - R2_ACCOUNT_ID: Cloudflare account ID
+# - R2_ACCESS_KEY_ID: R2 API token access key
+# - R2_SECRET_ACCESS_KEY: R2 API token secret
+#
+# Required repository variables:
+# - CMS_API_URL: Base URL of CMS API (e.g., https://api.chimeracomics.org)
+# - R2_BUCKET_NAME: Name of the R2 bucket for static sites
