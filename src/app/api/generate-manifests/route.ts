@@ -58,7 +58,7 @@ interface ManifestPage {
   number: number
   chapter: number | null
   image: {
-    original: string   // /media/filename.jpg (fallback)
+    original: string   // /api/media/file/filename.jpg (fallback)
     mobile: string     // /api/pub/media/mobile/baseName.webp (960w)
     desktop: string    // /api/pub/media/desktop/baseName.webp (1440w)
   }
@@ -226,7 +226,7 @@ async function generateComicsIndex(
       slug: comic.slug,
       title: comic.title,
       tagline: comic.description?.substring(0, 200) || null,
-      thumbnail: coverImage?.filename ? `/media/${coverImage.filename}` : null,
+      thumbnail: coverImage?.filename ? `/api/media/file/${coverImage.filename}` : null,
       pageCount: pagesQuery.totalDocs,
       latestPageDate: pagesQuery.docs[0]?.publishedDate || null,
       route: `/${comic.slug}/`,
@@ -316,11 +316,11 @@ async function generateComicManifest(
       number: page.globalPageNumber,
       chapter: chapter?.chapterNumber || null,
       image: {
-        original: filename ? `/media/${filename}` : '',
+        original: filename ? `/api/media/file/${filename}` : '',
         mobile: baseName ? `/api/pub/media/mobile/${baseName}.webp` : '',
         desktop: baseName ? `/api/pub/media/desktop/${baseName}.webp` : '',
       },
-      thumbnail: thumbnailImage?.filename ? `/media/${thumbnailImage.filename}` : null,
+      thumbnail: thumbnailImage?.filename ? `/api/media/file/${thumbnailImage.filename}` : null,
       width: pageImage?.width || null,
       height: pageImage?.height || null,
       title: page.title || null,
@@ -356,7 +356,7 @@ async function generateComicManifest(
       title: comic.title,
       tagline: comic.description?.substring(0, 200) || null,
       description: comic.description || null,
-      thumbnail: coverImage?.filename ? `/media/${coverImage.filename}` : null,
+      thumbnail: coverImage?.filename ? `/api/media/file/${coverImage.filename}` : null,
       credits,
       genres,
     },
