@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { findOrCreateUnassignedChapter } from './Chapters'
 
 // Helper hook to normalize string IDs to integers for D1 adapter compatibility
 const normalizeRelationshipId = ({ value }: { value?: any }) => {
@@ -99,12 +100,30 @@ export const Pages: CollectionConfig = {
       relationTo: 'chapters',
       label: 'Chapter',
       admin: {
-        description: 'Which chapter this page belongs to (optional)',
+        description: 'Which chapter this page belongs to (auto-assigned to "Unassigned Pages" if not selected)',
         position: 'sidebar',
         sortOptions: 'chapters.order', // Sort by chapter order, not title
       },
       hooks: {
-        beforeValidate: [normalizeRelationshipId],
+        beforeValidate: [
+          normalizeRelationshipId,
+          async ({ value, operation, req, siblingData, data }) => {
+            // Auto-assign to "Unassigned Pages" chapter if no chapter selected on create
+            if (operation === 'create' && !value && req.payload) {
+              const comicId = siblingData?.comic || data?.comic
+              if (comicId) {
+                try {
+                  const unassignedChapter = await findOrCreateUnassignedChapter(req.payload, comicId)
+                  console.log(`📁 Auto-assigning page to "${unassignedChapter.title}" chapter`)
+                  return unassignedChapter.id
+                } catch (error) {
+                  console.error('Error auto-assigning chapter:', error)
+                }
+              }
+            }
+            return value
+          },
+        ],
       },
     },
     {
@@ -128,34 +147,46 @@ export const Pages: CollectionConfig = {
             // Auto-assign next chapter page number if not provided
             if (operation === 'create' && (value === undefined || value === null) && req.payload) {
               const chapterId = siblingData?.chapter || data?.chapter
-              if (chapterId) {
-                try {
-                  const existingPages = await req.payload.find({
-                    collection: 'pages',
-                    where: {
-                      chapter: { equals: chapterId }
-                    },
-                    sort: '-chapterPageNumber',
-                    limit: 1,
-                    req: {
-                      ...req,
-                      skipGlobalPageCalculation: true, // Prevent hook cascades
-                    } as any
-                  })
+              const comicId = siblingData?.comic || data?.comic
 
-                  if (existingPages.docs.length === 0) {
-                    // First page in chapter starts at 1
-                    return 1
-                  } else {
-                    // Subsequent pages = increment from highest
-                    const highestPageNumber = existingPages.docs[0]?.chapterPageNumber || 0
-                    const nextPageNumber = highestPageNumber + 1
-                    return nextPageNumber
+              try {
+                let whereClause: any
+                if (chapterId) {
+                  // Query pages within the same chapter
+                  whereClause = { chapter: { equals: chapterId } }
+                } else if (comicId) {
+                  // Query pages without a chapter in the same comic
+                  whereClause = {
+                    comic: { equals: comicId },
+                    chapter: { exists: false }
                   }
-                } catch (error) {
-                  console.error('Error calculating next chapter page number:', error)
+                } else {
+                  // No comic or chapter - just default to 1
                   return 1
                 }
+
+                const existingPages = await req.payload.find({
+                  collection: 'pages',
+                  where: whereClause,
+                  sort: '-chapterPageNumber',
+                  limit: 1,
+                  req: {
+                    ...req,
+                    skipGlobalPageCalculation: true, // Prevent hook cascades
+                  } as any
+                })
+
+                if (existingPages.docs.length === 0) {
+                  // First page starts at 1
+                  return 1
+                } else {
+                  // Subsequent pages = increment from highest
+                  const highestPageNumber = existingPages.docs[0]?.chapterPageNumber || 0
+                  return highestPageNumber + 1
+                }
+              } catch (error) {
+                console.error('Error calculating next chapter page number:', error)
+                return 1
               }
             }
             return value
@@ -470,8 +501,14 @@ export const Pages: CollectionConfig = {
   ],
   hooks: {
     beforeChange: [
-      async ({ data, operation, req }) => {
-        // MINIMAL HOOK - Only essential operations to test for hanging
+      async ({ data, operation, req, originalDoc }) => {
+        // Track original chapter for stats update when page is reassigned
+        if (operation === 'update' && originalDoc?.chapter) {
+          const oldChapterId = typeof originalDoc.chapter === 'object'
+            ? originalDoc.chapter.id
+            : originalDoc.chapter
+          ;(req as any).originalChapterId = oldChapterId
+        }
 
         // Set timestamps
         if (operation === 'create') {
@@ -608,6 +645,21 @@ export const Pages: CollectionConfig = {
           } catch (error) {
             console.error('❌ Error updating chapter statistics:', error)
             // Don't throw - let the main operation succeed
+          }
+        }
+
+        // Update OLD chapter statistics when page is reassigned to a different chapter
+        const originalChapterId = (req as any).originalChapterId
+        if (originalChapterId && req.payload && !(req as any).skipChapterStatsCalculation) {
+          const newChapterId = typeof doc.chapter === 'object' ? doc.chapter?.id : doc.chapter
+          // Only update if chapter actually changed
+          if (originalChapterId !== newChapterId) {
+            try {
+              console.log(`📊 Updating stats for old chapter ${originalChapterId} (page reassigned)`)
+              await updateChapterStatistics(req.payload, originalChapterId, req)
+            } catch (error) {
+              console.error('❌ Error updating old chapter statistics:', error)
+            }
           }
         }
       },

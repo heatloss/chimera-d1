@@ -418,7 +418,8 @@ export const Chapters: CollectionConfig = {
 }
 
 // Helper function to find or create the "Unassigned Pages" fallback chapter
-async function findOrCreateUnassignedChapter(
+// Exported for use in Pages.ts when creating pages without a chapter
+export async function findOrCreateUnassignedChapter(
   payload: any, // eslint-disable-line @typescript-eslint/no-explicit-any
   comicId: number | string
 ) {

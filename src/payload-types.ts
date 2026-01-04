@@ -393,7 +393,7 @@ export interface Page {
    */
   comic: number | Comic;
   /**
-   * Which chapter this page belongs to (optional)
+   * Which chapter this page belongs to (auto-assigned to "Unassigned Pages" if not selected)
    */
   chapter?: (number | null) | Chapter;
   /**
