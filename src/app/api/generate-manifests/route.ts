@@ -57,7 +57,11 @@ interface ManifestChapter {
 interface ManifestPage {
   number: number
   chapter: number | null
-  image: string
+  image: {
+    original: string   // /media/filename.jpg (fallback)
+    mobile: string     // /api/pub/media/mobile/baseName.webp (960w)
+    desktop: string    // /api/pub/media/desktop/baseName.webp (1440w)
+  }
   thumbnail: string | null
   width: number | null
   height: number | null
@@ -303,10 +307,19 @@ async function generateComicManifest(
     const thumbnailImage = typeof page.thumbnailImage === 'object' ? page.thumbnailImage : null
     const chapter = typeof page.chapter === 'object' ? page.chapter : null
 
+    // Generate srcset-ready image URLs
+    // baseName is the filename without extension (e.g., "abc123" from "abc123.jpg")
+    const filename = pageImage?.filename || ''
+    const baseName = filename.replace(/\.[^.]+$/, '')
+
     return {
       number: page.globalPageNumber,
       chapter: chapter?.chapterNumber || null,
-      image: pageImage?.filename ? `/media/${pageImage.filename}` : '',
+      image: {
+        original: filename ? `/media/${filename}` : '',
+        mobile: baseName ? `/api/pub/media/mobile/${baseName}.webp` : '',
+        desktop: baseName ? `/api/pub/media/desktop/${baseName}.webp` : '',
+      },
       thumbnail: thumbnailImage?.filename ? `/media/${thumbnailImage.filename}` : null,
       width: pageImage?.width || null,
       height: pageImage?.height || null,
