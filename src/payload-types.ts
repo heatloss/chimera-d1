@@ -342,7 +342,7 @@ export interface Chapter {
    */
   title: string;
   /**
-   * Chapter order (read-only). To move: POST /api/move-chapter with chapterId and direction ("up"/"down")
+   * Chapter order (read-only). Use POST /api/reorder-chapters to reorder chapters.
    */
   order?: number | null;
   /**
