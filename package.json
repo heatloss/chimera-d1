@@ -35,13 +35,11 @@
     "cross-env": "^10.1.0",
     "dotenv": "17.2.3",
     "graphql": "^16.8.1",
-    "jimp": "^1.6.0",
     "next": "16.0.3",
     "payload": "3.69.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "sharp": "^0.34.4",
-    "wasm-image-optimization": "^1.4.3"
+    "sharp": "^0.34.4"
   },
   "devDependencies": {
     "@playwright/test": "1.57.0",

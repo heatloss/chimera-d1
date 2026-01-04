@@ -268,9 +268,10 @@ export const Media: CollectionConfig = {
             try {
               let thumbnails
               if (isWorkersRuntime) {
-                console.log('🌐 Using Jimp (Workers runtime)')
-                const { generateThumbnailsJimp } = await import('@/lib/generateThumbnailsJimp')
-                thumbnails = await generateThumbnailsJimp(
+                // Use Photon WASM via service binding (fast, native processing)
+                console.log('🌐 Using Photon WASM (service binding)')
+                const { generateThumbnailsPhoton } = await import('@/lib/generateThumbnailsPhoton')
+                thumbnails = await generateThumbnailsPhoton(
                   req.file.data,
                   req.file.name,
                   req.file.mimetype

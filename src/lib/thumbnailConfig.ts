@@ -9,6 +9,7 @@ export interface ThumbnailSize {
   height?: number
   fit: 'inside' | 'cover' | 'contain'
   position?: 'centre' | 'center' | 'top' | 'bottom' | 'left' | 'right'
+  quality?: number // WebP quality 1-100 (default 75)
 }
 
 export const THUMBNAIL_SIZES: ThumbnailSize[] = [
@@ -18,6 +19,7 @@ export const THUMBNAIL_SIZES: ThumbnailSize[] = [
     height: undefined,
     fit: 'inside',
     position: 'centre',
+    quality: 75,
   },
   {
     name: 'thumbnail_large',
@@ -25,6 +27,7 @@ export const THUMBNAIL_SIZES: ThumbnailSize[] = [
     height: undefined,
     fit: 'inside',
     position: 'centre',
+    quality: 80, // Slightly higher quality for larger thumbnail
   },
 ]
 
