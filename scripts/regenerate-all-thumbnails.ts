@@ -54,29 +54,14 @@ async function main() {
 
         console.log(`  📥 Downloaded ${buffer.length} bytes from R2`)
 
-        // Determine if we're in Workers or Node.js runtime
-        const isWorkersRuntime = typeof process === 'undefined' ||
-          (typeof globalThis !== 'undefined' && 'caches' in globalThis)
-
-        // Generate new thumbnails
-        let thumbnails
-        if (isWorkersRuntime) {
-          console.log('  🌐 Using Jimp (Workers runtime)')
-          const { generateThumbnailsJimp } = await import('../src/lib/generateThumbnailsJimp')
-          thumbnails = await generateThumbnailsJimp(
-            buffer,
-            media.filename!,
-            media.mimeType!
-          )
-        } else {
-          console.log('  🖥️  Using Sharp (Node.js runtime)')
-          const { generateThumbnailsSharp } = await import('../src/lib/generateThumbnailsSharp')
-          thumbnails = await generateThumbnailsSharp(
-            buffer,
-            media.filename!,
-            media.mimeType!
-          )
-        }
+        // Generate new thumbnails using Sharp (this script runs in Node.js)
+        console.log('  🖥️  Using Sharp (Node.js runtime)')
+        const { generateThumbnailsSharp } = await import('../src/lib/generateThumbnailsSharp')
+        let thumbnails = await generateThumbnailsSharp(
+          buffer,
+          media.filename!,
+          media.mimeType!
+        )
 
         console.log(`  ✅ Generated ${thumbnails.length} thumbnails`)
 

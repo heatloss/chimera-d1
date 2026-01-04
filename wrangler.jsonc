@@ -24,11 +24,11 @@
     },
   ],
   "services": [
-    // The service should match the "name" of your worker
-    // {
-    //   "binding": "WORKER_SELF_REFERENCE",
-    //   "service": "my-app"
-    // },
+    // Image processor worker for WASM-based resize and WebP conversion
+    {
+      "binding": "IMAGE_WORKER",
+      "service": "chimera-image-processor",
+    },
   ],
   "r2_buckets": [
     {
@@ -57,6 +57,7 @@
       "persist": true,
     },
   },
+
 
   // Here's how to configure an additional environment
   // It can be deployed with `CLOUDFLARE_ENV=staging pnpm run deploy`

@@ -17,14 +17,6 @@ const nextConfig: NextConfig = {
       '.mjs': ['.mts', '.mjs'],
     }
 
-    // Exclude @cf-wasm/photon from client bundle (only needed server-side in Workers)
-    if (!isServer) {
-      webpackConfig.resolve.alias = {
-        ...webpackConfig.resolve.alias,
-        '@cf-wasm/photon': false,
-      }
-    }
-
     return webpackConfig
   },
 }
