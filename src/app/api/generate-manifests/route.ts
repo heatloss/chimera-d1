@@ -37,6 +37,9 @@ interface ComicIndexEntry {
   pageCount: number
   latestPageDate: string | null
   route: string
+  credits: Array<{ role: string; name: string; url?: string }> | null
+  genres: string[] | null
+  tags: string[] | null
 }
 
 interface ComicsIndex {
@@ -45,18 +48,9 @@ interface ComicsIndex {
   comics: ComicIndexEntry[]
 }
 
-interface ManifestChapter {
-  id: number
-  title: string
-  number: number
-  startPage: number | null
-  endPage: number | null
-  pageCount: number
-}
-
 interface ManifestPage {
-  number: number
-  chapter: number | null
+  globalPageNumber: number
+  chapterPageNumber: number
   image: {
     original: string   // /api/media/file/filename.jpg (fallback)
     mobile: string     // /api/pub/media/mobile/baseName.webp (960w)
@@ -71,6 +65,13 @@ interface ManifestPage {
   publishedDate: string | null
 }
 
+interface ManifestChapter {
+  id: number
+  title: string
+  order: number
+  pages: ManifestPage[]
+}
+
 interface ComicManifest {
   version: string
   generatedAt: string
@@ -83,9 +84,9 @@ interface ComicManifest {
     thumbnail: string | null
     credits: Array<{ role: string; name: string; url?: string }> | null
     genres: string[] | null
+    tags: string[] | null
   }
   chapters: ManifestChapter[]
-  pages: ManifestPage[]
   navigation: {
     firstPage: number | null
     lastPage: number | null
@@ -221,6 +222,25 @@ async function generateComicsIndex(
 
     const coverImage = typeof comic.coverImage === 'object' ? comic.coverImage : null
 
+    // Extract credits
+    const credits = Array.isArray(comic.credits)
+      ? comic.credits.map((c: any) => ({
+          role: c.role === 'other' ? c.customRole || 'Other' : c.role,
+          name: c.name,
+          url: c.url || undefined,
+        }))
+      : null
+
+    // Extract genres
+    const genres = Array.isArray(comic.genres)
+      ? comic.genres.map((g: any) => (typeof g === 'object' ? g.name : g)).filter(Boolean)
+      : null
+
+    // Extract tags
+    const tags = Array.isArray(comic.tags)
+      ? comic.tags.map((t: any) => (typeof t === 'object' ? t.name : t)).filter(Boolean)
+      : null
+
     entries.push({
       id: comic.id,
       slug: comic.slug,
@@ -230,6 +250,9 @@ async function generateComicsIndex(
       pageCount: pagesQuery.totalDocs,
       latestPageDate: pagesQuery.docs[0]?.publishedDate || null,
       route: `/${comic.slug}/`,
+      credits,
+      genres,
+      tags,
     })
   }
 
@@ -283,29 +306,10 @@ async function generateComicManifest(
     sort: 'order',
   })
 
-  // Build chapter data with page ranges
-  const chapters: ManifestChapter[] = chaptersQuery.docs.map((chapter: any) => {
-    const chapterPages = pagesQuery.docs.filter((p: any) => {
-      const chapterId = typeof p.chapter === 'object' ? p.chapter?.id : p.chapter
-      return chapterId === chapter.id
-    })
-    const pageNumbers = chapterPages.map((p: any) => p.globalPageNumber)
-
-    return {
-      id: chapter.id,
-      title: chapter.title,
-      number: chapter.chapterNumber,
-      startPage: pageNumbers.length > 0 ? Math.min(...pageNumbers) : null,
-      endPage: pageNumbers.length > 0 ? Math.max(...pageNumbers) : null,
-      pageCount: chapterPages.length,
-    }
-  }).filter((ch: ManifestChapter) => ch.pageCount > 0)
-
-  // Build page data
-  const pages: ManifestPage[] = pagesQuery.docs.map((page: any) => {
+  // Helper to build a ManifestPage from a page document
+  const buildManifestPage = (page: any): ManifestPage => {
     const pageImage = typeof page.pageImage === 'object' ? page.pageImage : null
     const thumbnailImage = typeof page.thumbnailImage === 'object' ? page.thumbnailImage : null
-    const chapter = typeof page.chapter === 'object' ? page.chapter : null
 
     // Generate srcset-ready image URLs
     // baseName is the filename without extension (e.g., "abc123" from "abc123.jpg")
@@ -313,8 +317,8 @@ async function generateComicManifest(
     const baseName = filename.replace(/\.[^.]+$/, '')
 
     return {
-      number: page.globalPageNumber,
-      chapter: chapter?.chapterNumber || null,
+      globalPageNumber: page.globalPageNumber,
+      chapterPageNumber: page.chapterPageNumber,
       image: {
         original: filename ? `/api/media/file/${filename}` : '',
         mobile: baseName ? `/api/pub/media/mobile/${baseName}.webp` : '',
@@ -328,14 +332,41 @@ async function generateComicManifest(
       authorNote: page.authorNotes || null,
       publishedDate: page.publishedDate || null,
     }
-  })
+  }
 
-  const pageNumbers = pages.map((p) => p.number).filter((n) => n != null)
+  // Build chapters with nested pages
+  const chapters: ManifestChapter[] = chaptersQuery.docs
+    .map((chapter: any) => {
+      // Find pages belonging to this chapter
+      const chapterPages = pagesQuery.docs.filter((p: any) => {
+        const chapterId = typeof p.chapter === 'object' ? p.chapter?.id : p.chapter
+        return chapterId === chapter.id
+      })
+
+      // Sort by chapterPageNumber within the chapter
+      chapterPages.sort((a: any, b: any) => a.chapterPageNumber - b.chapterPageNumber)
+
+      return {
+        id: chapter.id,
+        title: chapter.title,
+        order: chapter.order,
+        pages: chapterPages.map(buildManifestPage),
+      }
+    })
+    .filter((ch: ManifestChapter) => ch.pages.length > 0) // Only include chapters with pages
+
+  // Calculate total pages and page range from all chapters
+  const allPageNumbers = chapters.flatMap(ch => ch.pages.map(p => p.globalPageNumber))
   const coverImage = typeof comic.coverImage === 'object' ? comic.coverImage : null
 
   // Extract genres if populated
   const genres = Array.isArray(comic.genres)
     ? comic.genres.map((g: any) => (typeof g === 'object' ? g.name : g)).filter(Boolean)
+    : null
+
+  // Extract tags
+  const tags = Array.isArray(comic.tags)
+    ? comic.tags.map((t: any) => (typeof t === 'object' ? t.name : t)).filter(Boolean)
     : null
 
   // Extract credits
@@ -359,13 +390,13 @@ async function generateComicManifest(
       thumbnail: coverImage?.filename ? `/api/media/file/${coverImage.filename}` : null,
       credits,
       genres,
+      tags,
     },
     chapters,
-    pages,
     navigation: {
-      firstPage: pageNumbers.length > 0 ? Math.min(...pageNumbers) : null,
-      lastPage: pageNumbers.length > 0 ? Math.max(...pageNumbers) : null,
-      totalPages: pages.length,
+      firstPage: allPageNumbers.length > 0 ? Math.min(...allPageNumbers) : null,
+      lastPage: allPageNumbers.length > 0 ? Math.max(...allPageNumbers) : null,
+      totalPages: allPageNumbers.length,
     },
   }
 }

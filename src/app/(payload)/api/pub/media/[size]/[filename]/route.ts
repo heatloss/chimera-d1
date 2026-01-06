@@ -16,6 +16,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 
+// Check if we're running on Cloudflare Workers (not local dev)
+const isWorkersRuntime = typeof (globalThis as any).caches !== 'undefined'
+  && typeof (globalThis as any).caches.default !== 'undefined'
+
 // Size configurations for SPA-optimized images
 // Note: Thumbnails (400px, 800px) are generated at upload time and served via /api/media/thumbnail/
 const SIZE_CONFIGS: Record<string, { width: number; quality: number }> = {
@@ -96,15 +100,6 @@ export async function GET(
 
     // Cache miss - need to generate the image
 
-    // Check if IMAGE_WORKER is available
-    if (!imageWorker) {
-      console.error('IMAGE_WORKER service binding not available')
-      return new NextResponse('Image processing not available', {
-        status: 500,
-        headers: corsHeaders,
-      })
-    }
-
     // Find the original file in R2 media/ prefix
     // Try common extensions if the requested filename doesn't have one
     const originalKey = await findOriginalFile(bucket, baseName)
@@ -130,30 +125,42 @@ export async function GET(
     // Get the original image data
     const originalBuffer = await originalObject.arrayBuffer()
 
-    // Call IMAGE_WORKER to resize and convert to WebP
-    const response = await imageWorker.fetch(
-      new Request('https://internal/resize', {
-        method: 'POST',
-        headers: {
-          'X-Width': sizeConfig.width.toString(),
-          'X-Height': '0', // Maintain aspect ratio
-          'X-Quality': sizeConfig.quality.toString(),
-        },
-        body: originalBuffer,
-      })
-    )
+    let webpBuffer: ArrayBuffer
 
-    if (!response.ok) {
-      const errorData = await response.json() as { error?: string }
-      console.error('IMAGE_WORKER error:', errorData.error)
-      return new NextResponse('Image processing failed', {
-        status: 500,
-        headers: corsHeaders,
-      })
+    if (isWorkersRuntime && imageWorker) {
+      // Cloudflare Workers: Use IMAGE_WORKER service binding
+      const response = await imageWorker.fetch(
+        new Request('https://internal/resize', {
+          method: 'POST',
+          headers: {
+            'X-Width': sizeConfig.width.toString(),
+            'X-Height': '0', // Maintain aspect ratio
+            'X-Quality': sizeConfig.quality.toString(),
+          },
+          body: originalBuffer,
+        })
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json() as { error?: string }
+        console.error('IMAGE_WORKER error:', errorData.error)
+        return new NextResponse('Image processing failed', {
+          status: 500,
+          headers: corsHeaders,
+        })
+      }
+
+      webpBuffer = await response.arrayBuffer()
+    } else {
+      // Local development: Use Sharp
+      const sharp = (await import('sharp')).default
+      const resizedBuffer = await sharp(Buffer.from(originalBuffer))
+        .resize(sizeConfig.width, null, { withoutEnlargement: true })
+        .webp({ quality: sizeConfig.quality })
+        .toBuffer()
+      // Convert Node.js Buffer to ArrayBuffer
+      webpBuffer = new Uint8Array(resizedBuffer).buffer
     }
-
-    // Get the generated WebP image
-    const webpBuffer = await response.arrayBuffer()
 
     console.log(`✅ Generated ${size} image: ${webpBuffer.byteLength} bytes`)
 
