@@ -83,10 +83,45 @@ export async function GET(request: NextRequest) {
       pages: pagesResult?.results
     })
 
+    // Check for duplicate genres/tags in comics_rels
+    const comicsRelsResult = await d1.prepare(`
+      SELECT
+        parent_id,
+        path,
+        genres_id,
+        tags_id,
+        COUNT(*) as count
+      FROM comics_rels
+      GROUP BY parent_id, path, genres_id, tags_id
+      HAVING COUNT(*) > 1
+      ORDER BY count DESC
+      LIMIT 20
+    `).all()
+    diagnostics.steps.push({
+      step: 'duplicate_rels_check',
+      status: 'success',
+      duplicates: comicsRelsResult?.results
+    })
+
+    // Get raw comics_rels for comic 1 (or first comic with data)
+    const rawRelsResult = await d1.prepare(`
+      SELECT id, "order", parent_id, path, genres_id, tags_id
+      FROM comics_rels
+      WHERE parent_id = 1
+      ORDER BY path, "order"
+    `).all()
+    diagnostics.steps.push({
+      step: 'raw_rels_comic_1',
+      status: 'success',
+      relationships: rawRelsResult?.results
+    })
+
     return NextResponse.json({
       success: true,
       totalPages: countResult?.count,
       recentPages: pagesResult?.results,
+      duplicateRelationships: comicsRelsResult?.results,
+      comic1Relationships: rawRelsResult?.results,
       diagnostics
     })
 
@@ -301,14 +336,155 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
+/**
+ * PUT /api/d1-diagnostic - Clean up duplicate relationships in comics_rels
+ *
+ * This is a one-time cleanup for the D1 adapter bug where hasMany relationships
+ * accumulate duplicates on each save.
+ */
+export async function PUT(request: NextRequest) {
+  const results: any = {
+    timestamp: new Date().toISOString(),
+    cleaned: [],
+    errors: []
+  }
+
+  try {
+    // Get D1 binding
+    let d1 = null
+    try {
+      const cfContext = await getCloudflareContext()
+      d1 = cfContext?.env?.D1
+    } catch {
+      const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
+      d1 = cloudflare?.env?.D1
+    }
+
+    if (!d1) {
+      return NextResponse.json({
+        error: 'D1 binding not available'
+      }, { status: 500, headers: corsHeaders })
+    }
+
+    // Find all comics with duplicate relationships
+    const duplicatesResult = await d1.prepare(`
+      SELECT DISTINCT parent_id
+      FROM comics_rels
+      GROUP BY parent_id, path, genres_id, tags_id
+      HAVING COUNT(*) > 1
+    `).all()
+
+    const affectedComicIds = [...new Set((duplicatesResult.results || []).map((r: any) => r.parent_id))]
+    results.affectedComics = affectedComicIds.length
+
+    // Clean up each affected comic
+    for (const comicId of affectedComicIds) {
+      try {
+        // Count before
+        const beforeCount = await d1.prepare(`
+          SELECT COUNT(*) as count FROM comics_rels WHERE parent_id = ?
+        `).bind(comicId).first()
+
+        // Delete duplicate genre relationships, keeping only the row with lowest id
+        await d1.prepare(`
+          DELETE FROM comics_rels
+          WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM comics_rels
+            WHERE parent_id = ? AND path = 'genres' AND genres_id IS NOT NULL
+            GROUP BY parent_id, path, genres_id
+          )
+          AND parent_id = ?
+          AND path = 'genres'
+        `).bind(comicId, comicId).run()
+
+        // Delete duplicate tag relationships
+        await d1.prepare(`
+          DELETE FROM comics_rels
+          WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM comics_rels
+            WHERE parent_id = ? AND path = 'tags' AND tags_id IS NOT NULL
+            GROUP BY parent_id, path, tags_id
+          )
+          AND parent_id = ?
+          AND path = 'tags'
+        `).bind(comicId, comicId).run()
+
+        // Re-sequence genre order values
+        const genreRows = await d1.prepare(`
+          SELECT id FROM comics_rels
+          WHERE parent_id = ? AND path = 'genres'
+          ORDER BY id
+        `).bind(comicId).all()
+
+        for (let i = 0; i < (genreRows.results?.length || 0); i++) {
+          await d1.prepare(`
+            UPDATE comics_rels SET "order" = ? WHERE id = ?
+          `).bind(i + 1, genreRows.results![i].id).run()
+        }
+
+        // Re-sequence tag order values
+        const tagRows = await d1.prepare(`
+          SELECT id FROM comics_rels
+          WHERE parent_id = ? AND path = 'tags'
+          ORDER BY id
+        `).bind(comicId).all()
+
+        for (let i = 0; i < (tagRows.results?.length || 0); i++) {
+          await d1.prepare(`
+            UPDATE comics_rels SET "order" = ? WHERE id = ?
+          `).bind(i + 1, tagRows.results![i].id).run()
+        }
+
+        // Count after
+        const afterCount = await d1.prepare(`
+          SELECT COUNT(*) as count FROM comics_rels WHERE parent_id = ?
+        `).bind(comicId).first()
+
+        results.cleaned.push({
+          comicId,
+          before: beforeCount?.count,
+          after: afterCount?.count,
+          removed: (beforeCount?.count || 0) - (afterCount?.count || 0)
+        })
+
+      } catch (error: any) {
+        results.errors.push({
+          comicId,
+          error: error.message
+        })
+      }
+    }
+
+    const totalRemoved = results.cleaned.reduce((sum: number, c: any) => sum + c.removed, 0)
+
+    return NextResponse.json({
+      success: true,
+      message: `Cleaned up ${totalRemoved} duplicate relationships from ${affectedComicIds.length} comics`,
+      totalRemoved,
+      ...results
+    }, { headers: corsHeaders })
+
+  } catch (error: any) {
+    return NextResponse.json({
+      error: 'Cleanup failed',
+      details: error.message,
+      ...results
+    }, { status: 500, headers: corsHeaders })
+  }
+}
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+}
+
 // CORS preflight
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    }
+    headers: corsHeaders
   })
 }

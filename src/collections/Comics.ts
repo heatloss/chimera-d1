@@ -8,6 +8,84 @@ const normalizeRelationshipId = ({ value }: { value?: any }) => {
   return value
 }
 
+/**
+ * Workaround for D1 adapter bug: hasMany relationships accumulate duplicates
+ * because the adapter doesn't DELETE existing rows before INSERTing new ones.
+ * This hook cleans up duplicates after each save.
+ *
+ * Bug tracking: https://github.com/payloadcms/payload/issues/XXXXX (to be filed)
+ */
+const deduplicateRelationships = async ({ doc }: { doc: any }) => {
+  try {
+    const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
+    const d1 = cloudflare?.env?.D1
+    if (!d1) {
+      console.warn('⚠️ D1 not available for relationship deduplication')
+      return doc
+    }
+
+    const comicId = doc.id
+
+    // Delete duplicate genre relationships, keeping only the row with lowest id for each unique genre
+    await d1.prepare(`
+      DELETE FROM comics_rels
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM comics_rels
+        WHERE parent_id = ? AND path = 'genres' AND genres_id IS NOT NULL
+        GROUP BY parent_id, path, genres_id
+      )
+      AND parent_id = ?
+      AND path = 'genres'
+    `).bind(comicId, comicId).run()
+
+    // Delete duplicate tag relationships, keeping only the row with lowest id for each unique tag
+    await d1.prepare(`
+      DELETE FROM comics_rels
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM comics_rels
+        WHERE parent_id = ? AND path = 'tags' AND tags_id IS NOT NULL
+        GROUP BY parent_id, path, tags_id
+      )
+      AND parent_id = ?
+      AND path = 'tags'
+    `).bind(comicId, comicId).run()
+
+    // Re-sequence the order values to be contiguous (1, 2, 3, ...)
+    // First for genres
+    const genreRows = await d1.prepare(`
+      SELECT id FROM comics_rels
+      WHERE parent_id = ? AND path = 'genres'
+      ORDER BY id
+    `).bind(comicId).all()
+
+    for (let i = 0; i < (genreRows.results?.length || 0); i++) {
+      await d1.prepare(`
+        UPDATE comics_rels SET "order" = ? WHERE id = ?
+      `).bind(i + 1, genreRows.results![i].id).run()
+    }
+
+    // Then for tags
+    const tagRows = await d1.prepare(`
+      SELECT id FROM comics_rels
+      WHERE parent_id = ? AND path = 'tags'
+      ORDER BY id
+    `).bind(comicId).all()
+
+    for (let i = 0; i < (tagRows.results?.length || 0); i++) {
+      await d1.prepare(`
+        UPDATE comics_rels SET "order" = ? WHERE id = ?
+      `).bind(i + 1, tagRows.results![i].id).run()
+    }
+
+    console.log(`✅ Deduplicated relationships for comic ${comicId}`)
+  } catch (error) {
+    console.error('⚠️ Failed to deduplicate relationships:', error)
+  }
+  return doc
+}
+
 export const Comics: CollectionConfig = {
   slug: 'comics',
   admin: {
@@ -312,6 +390,7 @@ export const Comics: CollectionConfig = {
         return data
       },
     ],
+    afterChange: [deduplicateRelationships],
   },
   timestamps: true,
 }
