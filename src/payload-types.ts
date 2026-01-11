@@ -342,6 +342,10 @@ export interface Chapter {
    */
   title: string;
   /**
+   * URL-friendly identifier (auto-generated from title, must be unique within the comic)
+   */
+  slug: string;
+  /**
    * Chapter order (read-only). Use POST /api/reorder-chapters to reorder chapters.
    */
   order?: number | null;
@@ -350,10 +354,6 @@ export interface Chapter {
    */
   description?: string | null;
   seoMeta?: {
-    /**
-     * URL-friendly chapter identifier (auto-generated if empty)
-     */
-    slug?: string | null;
     /**
      * SEO title (defaults to chapter title if empty)
      */
@@ -408,6 +408,10 @@ export interface Page {
    * Optional title for this specific page
    */
   title?: string | null;
+  /**
+   * URL-friendly identifier. Auto-regenerates when chapter changes or title becomes meaningful (unless manually customized).
+   */
+  slug: string;
   displayTitle?: string | null;
   /**
    * The main comic page image that readers will see
@@ -456,10 +460,6 @@ export interface Page {
     isLastPage?: boolean | null;
   };
   seoMeta?: {
-    /**
-     * URL-friendly page identifier (auto-generated if empty)
-     */
-    slug?: string | null;
     /**
      * SEO title (auto-generated if empty)
      */
@@ -651,12 +651,12 @@ export interface ComicsSelect<T extends boolean = true> {
 export interface ChaptersSelect<T extends boolean = true> {
   comic?: T;
   title?: T;
+  slug?: T;
   order?: T;
   description?: T;
   seoMeta?:
     | T
     | {
-        slug?: T;
         metaTitle?: T;
         metaDescription?: T;
       };
@@ -680,6 +680,7 @@ export interface PagesSelect<T extends boolean = true> {
   chapterPageNumber?: T;
   globalPageNumber?: T;
   title?: T;
+  slug?: T;
   displayTitle?: T;
   pageImage?: T;
   pageExtraImages?:
@@ -705,7 +706,6 @@ export interface PagesSelect<T extends boolean = true> {
   seoMeta?:
     | T
     | {
-        slug?: T;
         metaTitle?: T;
         metaDescription?: T;
       };

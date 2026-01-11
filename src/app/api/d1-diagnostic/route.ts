@@ -116,12 +116,27 @@ export async function GET(request: NextRequest) {
       relationships: rawRelsResult?.results
     })
 
+    // Check page slugs - look for integer-only slugs
+    const pageSlugsResult = await d1.prepare(`
+      SELECT id, slug, title, chapter_page_number
+      FROM pages
+      WHERE slug GLOB '[0-9]' OR slug GLOB '[0-9][0-9]' OR slug GLOB '[0-9][0-9][0-9]'
+      LIMIT 20
+    `).all()
+    diagnostics.steps.push({
+      step: 'integer_only_slugs',
+      status: 'success',
+      count: pageSlugsResult?.results?.length || 0,
+      samples: pageSlugsResult?.results
+    })
+
     return NextResponse.json({
       success: true,
       totalPages: countResult?.count,
       recentPages: pagesResult?.results,
       duplicateRelationships: comicsRelsResult?.results,
       comic1Relationships: rawRelsResult?.results,
+      integerOnlySlugs: pageSlugsResult?.results,
       diagnostics
     })
 

@@ -49,6 +49,7 @@ interface ComicsIndex {
 }
 
 interface ManifestPage {
+  slug: string | null
   globalPageNumber: number
   chapterPageNumber: number
   image: {
@@ -67,6 +68,7 @@ interface ManifestPage {
 
 interface ManifestChapter {
   id: number
+  slug: string | null
   title: string
   order: number
   pages: ManifestPage[]
@@ -317,6 +319,7 @@ async function generateComicManifest(
     const baseName = filename.replace(/\.[^.]+$/, '')
 
     return {
+      slug: page.slug || null,
       globalPageNumber: page.globalPageNumber,
       chapterPageNumber: page.chapterPageNumber,
       image: {
@@ -348,6 +351,7 @@ async function generateComicManifest(
 
       return {
         id: chapter.id,
+        slug: chapter.slug || null,
         title: chapter.title,
         order: chapter.order,
         pages: chapterPages.map(buildManifestPage),

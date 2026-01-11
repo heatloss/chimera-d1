@@ -393,5 +393,44 @@ Frontend code needs to adjust accordingly: `comic.genres.map(g => g.genre)`
 
 ---
 
-**Last Updated:** 2025-12-04
+## Future Enhancements
+
+### Slug Validation Endpoint (UX Improvement)
+
+**Context:** As of 2026-01-10, slugs for chapters and pages are now top-level fields with uniqueness validation within their parent comic. The validation happens server-side in `beforeValidate` hooks.
+
+**Problem:** When a user manually edits a slug, they won't know if it conflicts with an existing slug until they hit Save and receive a server error. This is poor UX.
+
+**Proposed Solution:** Create a lightweight validation endpoint:
+
+```
+GET /api/validate-slug?collection=pages&comic=1&slug=my-new-slug
+
+Response:
+{ "available": true }
+// or
+{ "available": false, "suggestion": "my-new-slug-2" }
+```
+
+**Frontend Integration:**
+- Call on blur of the slug input field, OR
+- Debounced (300-500ms) as user types
+- Display inline validation feedback before form submission
+
+**Implementation Notes:**
+- Single indexed query per call (efficient)
+- Minimal data exposure (just availability boolean)
+- Same pattern as username/email availability checks
+- Collections to support: `chapters`, `pages`
+- Required params: `collection`, `comic` (parent ID), `slug`
+
+**Files that would need changes:**
+- New endpoint: `src/app/api/validate-slug/route.ts`
+- Frontend: slug input components for chapters/pages
+
+**Priority:** Low (current server-side validation works, just not ideal UX)
+
+---
+
+**Last Updated:** 2026-01-10
 **Status:** Production-ready with documented limitations

@@ -158,6 +158,71 @@ export const Chapters: CollectionConfig = {
       },
     },
     {
+      name: 'slug',
+      type: 'text',
+      required: true,
+      label: 'URL Slug',
+      admin: {
+        description: 'URL-friendly identifier (auto-generated from title, must be unique within the comic)',
+        position: 'sidebar',
+      },
+      hooks: {
+        beforeValidate: [
+          async ({ value, data, req, operation, originalDoc }) => {
+            const comicId = data?.comic || originalDoc?.comic
+            const chapterId = originalDoc?.id
+
+            // Auto-generate slug from title if not provided
+            let slug = value
+            if (!slug && data?.title) {
+              slug = data.title
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/(^-|-$)+/g, '')
+            }
+
+            if (!slug) return value
+
+            // Check for uniqueness within the comic
+            if (comicId && req.payload) {
+              const existing = await req.payload.find({
+                collection: 'chapters',
+                where: {
+                  comic: { equals: comicId },
+                  slug: { equals: slug },
+                  ...(chapterId ? { id: { not_equals: chapterId } } : {}),
+                },
+                limit: 1,
+              })
+
+              if (existing.docs.length > 0) {
+                // Append number to make unique
+                let counter = 2
+                let newSlug = `${slug}-${counter}`
+                while (true) {
+                  const check = await req.payload.find({
+                    collection: 'chapters',
+                    where: {
+                      comic: { equals: comicId },
+                      slug: { equals: newSlug },
+                      ...(chapterId ? { id: { not_equals: chapterId } } : {}),
+                    },
+                    limit: 1,
+                  })
+                  if (check.docs.length === 0) break
+                  counter++
+                  newSlug = `${slug}-${counter}`
+                }
+                slug = newSlug
+              }
+            }
+
+            return slug
+          },
+        ],
+      },
+    },
+    {
       name: 'order',
       type: 'number',
       required: false, // Auto-assigned by hook
@@ -206,27 +271,6 @@ export const Chapters: CollectionConfig = {
       type: 'group',
       label: 'SEO & Metadata',
       fields: [
-        {
-          name: 'slug',
-          type: 'text',
-          label: 'Chapter Slug',
-          admin: {
-            description: 'URL-friendly chapter identifier (auto-generated if empty)',
-          },
-          hooks: {
-            beforeValidate: [
-              ({ value, data }) => {
-                if (data?.title && !value) {
-                  return data.title
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, '-')
-                    .replace(/(^-|-$)+/g, '')
-                }
-                return value
-              },
-            ],
-          },
-        },
         {
           name: 'metaTitle',
           type: 'text',

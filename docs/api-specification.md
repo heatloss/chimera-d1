@@ -4,7 +4,7 @@
 
 A webcomic content management system built on Payload CMS v3, deployed on Cloudflare Workers with D1 database and R2 storage. This API provides complete backend functionality for managing webcomic series, chapters, pages, users, and media assets with role-based access control.
 
-**Current Version**: January 2025 (Payload v3.69.0)
+**Current Version**: January 2026 (Payload v3.69.0)
 
 ## Base URLs
 
@@ -213,6 +213,7 @@ Individual comic page management.
   ],
   "altText": "Description of what happens in this page",
   "authorNotes": "Author commentary and notes",
+  "slug": "optional-page-title", // Top-level, unique within comic, auto-regenerates on chapter/title change
   "status": "draft|scheduled|published",
   "publishedDate": "2024-01-15T10:30:00Z",
   "navigation": {
@@ -222,7 +223,6 @@ Individual comic page management.
     "isLastPage": false
   },
   "seoMeta": {
-    "slug": "optional-page-title",
     "metaTitle": "Page 15 - My Awesome Comic",
     "metaDescription": "Description of what happens in this page"
   },
@@ -256,11 +256,11 @@ Organizational containers for comic pages, grouped by story arcs or sections.
   "id": 2,
   "comic": 1, // Integer ID
   "title": "The Beginning",
+  "slug": "the-beginning", // Top-level, unique within comic
   "order": 1, // Display order (auto-assigned, reorderable via API)
   "description": "Optional chapter summary",
   "coverImage": 5, // Integer ID of media
   "seoMeta": {
-    "slug": "the-beginning",
     "metaTitle": "Chapter 1: The Beginning",
     "metaDescription": "Our hero's journey starts here..."
   },
@@ -1072,6 +1072,17 @@ Chimera CMS uses a dual numbering system for comic pages:
 **Impact**: Frontend should generate thumbnails using Canvas API for optimal bulk upload performance (50 files). Without client thumbnails, batch size is limited to ~20 files.
 
 ## Migration Notes
+
+### January 2026 Update (Slug Refactor)
+- **BREAKING CHANGE**: Slugs moved from `seoMeta.slug` to top-level `slug` field for both Chapters and Pages
+- **Frontend migration required**: Update references from `chapter.seoMeta?.slug` → `chapter.slug` and `page.seoMeta?.slug` → `page.slug`
+- Slugs are now unique within their parent comic (not globally unique)
+- Page slugs auto-regenerate when:
+  - Chapter assignment changes (if slug appears auto-generated)
+  - Title changes from integer-only to meaningful text
+- Manually customized slugs (not matching `*-page-N` pattern) are preserved
+- Integer-only slugs (like "1", "2") have been migrated to `{chapter-slug}-page-{N}` format
+- New database indexes added for efficient slug lookups
 
 ### January 2025 Update
 - **Documentation update**: API specification now accurately reflects all collection fields
