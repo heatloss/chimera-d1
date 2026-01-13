@@ -439,6 +439,15 @@ export const Pages: CollectionConfig = {
       },
     },
     {
+      name: 'contentWarning',
+      type: 'textarea',
+      label: 'Content Warning',
+      admin: {
+        description: 'If set, this page will display a warning overlay before revealing content (e.g., gore, nudity, spoilers)',
+        rows: 2,
+      },
+    },
+    {
       name: 'authorNotes',
       type: 'textarea',
       label: 'Author Notes',

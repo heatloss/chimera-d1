@@ -439,6 +439,10 @@ export interface Page {
    */
   altText?: string | null;
   /**
+   * If set, this page will display a warning overlay before revealing content (e.g., gore, nudity, spoilers)
+   */
+  contentWarning?: string | null;
+  /**
    * Optional commentary, behind-the-scenes notes, or author thoughts (Markdown supported)
    */
   authorNotes?: string | null;
@@ -692,6 +696,7 @@ export interface PagesSelect<T extends boolean = true> {
       };
   thumbnailImage?: T;
   altText?: T;
+  contentWarning?: T;
   authorNotes?: T;
   status?: T;
   publishedDate?: T;

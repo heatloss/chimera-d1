@@ -3,6 +3,7 @@ import * as migration_20251122_165441 from './20251122_165441';
 import * as migration_20251215_genres_tags_collections from './20251215_genres_tags_collections';
 import * as migration_20260110_slugs_to_top_level from './20260110_slugs_to_top_level';
 import * as migration_20260111_fix_integer_slugs from './20260111_fix_integer_slugs';
+import * as migration_20260113_add_content_warning from './20260113_add_content_warning';
 
 export const migrations = [
   {
@@ -29,5 +30,10 @@ export const migrations = [
     up: migration_20260111_fix_integer_slugs.up,
     down: migration_20260111_fix_integer_slugs.down,
     name: '20260111_fix_integer_slugs',
+  },
+  {
+    up: migration_20260113_add_content_warning.up,
+    down: migration_20260113_add_content_warning.down,
+    name: '20260113_add_content_warning',
   },
 ];
