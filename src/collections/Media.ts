@@ -22,12 +22,17 @@ export const Media: CollectionConfig = {
     read: ({ req: { user } }) => {
       if (user?.role === 'admin') return true
       if (user?.role === 'editor') return true
-      if (!user?.id) return false
-      // Creators can only see their own uploads
+      // Public images are readable by anyone (including unauthenticated)
+      // Private images only readable by the uploader
+      if (!user?.id) {
+        return { isPublic: { equals: true } }
+      }
+      // Authenticated users can see public images OR their own uploads
       return {
-        uploadedBy: {
-          equals: user.id,
-        },
+        or: [
+          { isPublic: { equals: true } },
+          { uploadedBy: { equals: user.id } },
+        ],
       }
     },
     update: ({ req: { user } }) => {
