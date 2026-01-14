@@ -354,6 +354,38 @@ Consider using **PostgreSQL on Neon or Supabase** instead of D1.
 - [SQLite ALTER TABLE Limitations](https://www.sqlite.org/lang_altertable.html)
 - [Drizzle ORM Migrations](https://orm.drizzle.team/docs/migrations)
 
+## Array Fields Cause UNIQUE Constraint Failures on Concurrent Updates
+
+**Issue:** When multiple requests concurrently update a document with array fields (like `credits` on Comics), the D1 adapter causes UNIQUE constraint failures.
+
+**Root cause:** The adapter handles array fields by DELETE + INSERT with explicit IDs, rather than using UPSERT. When concurrent updates occur:
+1. Update A deletes all array rows, then inserts with IDs 1, 2, 3
+2. Update B (running in parallel) tries to insert with the same IDs
+3. Update B fails: `UNIQUE constraint failed: comics_credits.id`
+
+**Symptoms:**
+- `UNIQUE constraint failed: comics_credits.id: SQLITE_CONSTRAINT`
+- Happens when multiple pages are saved simultaneously (each triggers comic stats update)
+- First update succeeds, subsequent concurrent updates fail
+
+**Workaround (implemented 2026-01-13):**
+`updateComicPageStatistics()` in `src/collections/Pages.ts` uses raw D1 SQL to update only the stats columns, bypassing Payload's update mechanism entirely.
+
+```typescript
+// Instead of payload.update() which re-saves the entire document:
+await d1.prepare(`
+  UPDATE comics
+  SET stats_total_pages = ?, stats_last_page_published = ?
+  WHERE id = ?
+`).bind(totalPages, lastPublished, comicId).run()
+```
+
+**Related GitHub issues:** #14766, #14748
+
+**TODO:** Periodically check if Payload fixes the D1 adapter's array handling. When fixed, revert `updateComicPageStatistics()` to use `payload.update()`.
+
+---
+
 ## hasMany Fields Don't Work
 
 **Issue:** Payload CMS's `hasMany: true` option for select and text fields is broken in the D1 adapter.

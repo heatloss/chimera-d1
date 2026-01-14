@@ -907,22 +907,37 @@ async function updateChapterStatistics(payload: any, chapterId: string | number,
   }
 }
 
-// Update ONLY page-related statistics (totalPages, lastPagePublished)
-// This function preserves chapter-related stats (totalChapters)
-// to prevent conflicts with the Chapters collection hook
+/**
+ * Update ONLY page-related statistics (totalPages, lastPagePublished)
+ * This function preserves chapter-related stats (totalChapters)
+ * to prevent conflicts with the Chapters collection hook.
+ *
+ * ============================================================================
+ * HACK WORKAROUND: Using raw D1 SQL instead of payload.update()
+ * ============================================================================
+ * Issue: The D1 adapter has a bug where calling payload.update() on a document
+ * with array fields (like `credits` on Comics) causes UNIQUE constraint failures
+ * during concurrent updates. The adapter does DELETE + INSERT with explicit IDs
+ * instead of using UPSERT patterns, causing race conditions.
+ *
+ * Workaround: Use raw SQL to update ONLY the stats columns, avoiding the
+ * array field re-insertion issue entirely.
+ *
+ * Bug tracking:
+ * - GitHub issues #14766, #14748 describe related D1 adapter problems
+ * - This workaround added: 2026-01-13
+ *
+ * TODO: Periodically check if Payload has fixed the D1 adapter's array handling.
+ * When fixed, revert to using payload.update() for cleaner code:
+ *   await payload.update({
+ *     collection: 'comics',
+ *     id: comicId,
+ *     data: { stats: { totalPages, totalChapters, lastPagePublished } }
+ *   })
+ * ============================================================================
+ */
 async function updateComicPageStatistics(payload: any, comicId: string, req: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
   try {
-    // Get current comic to preserve chapter stats
-    const comic = await payload.findByID({
-      collection: 'comics',
-      id: comicId,
-      req: {
-        ...req,
-        skipGlobalPageCalculation: true,
-        skipComicStatsCalculation: true,
-      } as any
-    })
-
     // Count published pages with guard clauses
     const pages = await payload.find({
       collection: 'pages',
@@ -934,14 +949,13 @@ async function updateComicPageStatistics(payload: any, comicId: string, req: any
       req: {
         ...req,
         skipGlobalPageCalculation: true,
-        skipComicStatsCalculation: true, // Prevent loops
+        skipComicStatsCalculation: true,
       } as any
     })
 
     // Find last published page date
-    let lastPagePublished = null
+    let lastPagePublished: string | null = null
     if (pages.docs.length > 0) {
-      // Sort by publishedDate to find the most recent
       const sortedPages = pages.docs
         .filter((page: any) => page.publishedDate)
         .sort((a: any, b: any) => new Date(b.publishedDate).getTime() - new Date(a.publishedDate).getTime())
@@ -951,23 +965,45 @@ async function updateComicPageStatistics(payload: any, comicId: string, req: any
       }
     }
 
-    // Update comic with page stats, preserving chapter stats
-    await payload.update({
-      collection: 'comics',
-      id: comicId,
-      data: {
-        stats: {
-          totalPages: pages.totalDocs,
-          totalChapters: comic.stats?.totalChapters || 0, // Preserve from Chapters hook
-          lastPagePublished: lastPagePublished,
-        }
-      },
-      req: {
-        ...req,
-        skipGlobalPageCalculation: true,
-        skipComicStatsCalculation: true, // Prevent loops
-      } as any,
-    })
+    // WORKAROUND: Use raw D1 SQL to update only stats columns
+    // This avoids the array field re-insertion bug in the D1 adapter
+    const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
+    const d1 = cloudflare?.env?.D1
+
+    if (d1) {
+      // Raw SQL update - only touches stats columns, leaves arrays alone
+      await d1.prepare(`
+        UPDATE comics
+        SET stats_total_pages = ?,
+            stats_last_page_published = ?
+        WHERE id = ?
+      `).bind(
+        pages.totalDocs,
+        lastPagePublished,
+        comicId
+      ).run()
+    } else {
+      // Fallback for local dev without D1 binding - use payload.update()
+      // This may still have issues with concurrent updates, but works for dev
+      const comic = await payload.findByID({
+        collection: 'comics',
+        id: comicId,
+        req: { ...req, skipComicStatsCalculation: true } as any
+      })
+
+      await payload.update({
+        collection: 'comics',
+        id: comicId,
+        data: {
+          stats: {
+            totalPages: pages.totalDocs,
+            totalChapters: comic.stats?.totalChapters || 0,
+            lastPagePublished: lastPagePublished,
+          }
+        },
+        req: { ...req, skipComicStatsCalculation: true } as any,
+      })
+    }
 
     console.log(`📄 Updated comic page statistics: ${pages.totalDocs} pages, last published: ${lastPagePublished ? new Date(lastPagePublished).toLocaleDateString() : 'never'}`)
     return true
