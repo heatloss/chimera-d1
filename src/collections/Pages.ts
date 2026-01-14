@@ -764,6 +764,18 @@ export const Pages: CollectionConfig = {
             }
           }
         }
+
+        // Update page navigation (previousPage, nextPage) based on globalPageNumber
+        // Guard: Skip if flag is set to prevent infinite loops
+        if (doc.comic && doc.globalPageNumber && req.payload && !(req as any).skipNavigationCalculation) {
+          try {
+            const comicId = typeof doc.comic === 'object' ? doc.comic.id : doc.comic
+            await updatePageNavigation(req.payload, doc.id, comicId, doc.globalPageNumber, req)
+          } catch (error) {
+            console.error('❌ Error updating page navigation:', error)
+            // Don't throw - let the main operation succeed
+          }
+        }
       },
     ],
     afterDelete: [
@@ -787,6 +799,18 @@ export const Pages: CollectionConfig = {
             await updateChapterStatistics(req.payload, chapterId, req)
           } catch (error) {
             console.error('❌ Error updating chapter statistics after delete:', error)
+          }
+        }
+
+        // Fix navigation for adjacent pages after deletion
+        // The previous page's nextPage should now point to the deleted page's nextPage
+        // The next page's previousPage should now point to the deleted page's previousPage
+        if (doc.comic && doc.globalPageNumber && req.payload && !(req as any).skipNavigationCalculation) {
+          try {
+            const comicId = typeof doc.comic === 'object' ? doc.comic.id : doc.comic
+            await fixAdjacentPagesAfterDelete(req.payload, comicId, doc.globalPageNumber, req)
+          } catch (error) {
+            console.error('❌ Error fixing adjacent page navigation after delete:', error)
           }
         }
       },
@@ -949,6 +973,177 @@ async function updateComicPageStatistics(payload: any, comicId: string, req: any
     return true
   } catch (error) {
     console.error('Error in updateComicPageStatistics:', error)
+    return false
+  }
+}
+
+// Update page navigation (previousPage, nextPage, isFirstPage, isLastPage)
+// Based on globalPageNumber within the same comic for seamless chapter transitions
+async function updatePageNavigation(payload: any, pageId: string | number, comicId: string | number, globalPageNumber: number, req: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const guardedReq = {
+    ...req,
+    skipGlobalPageCalculation: true,
+    skipComicStatsCalculation: true,
+    skipChapterStatsCalculation: true,
+    skipNavigationCalculation: true,
+  } as any
+
+  try {
+    // Find previous page (globalPageNumber - 1)
+    const prevPageResult = await payload.find({
+      collection: 'pages',
+      where: {
+        comic: { equals: comicId },
+        globalPageNumber: { equals: globalPageNumber - 1 },
+      },
+      limit: 1,
+      req: guardedReq,
+    })
+    const prevPage = prevPageResult.docs[0] || null
+
+    // Find next page (globalPageNumber + 1)
+    const nextPageResult = await payload.find({
+      collection: 'pages',
+      where: {
+        comic: { equals: comicId },
+        globalPageNumber: { equals: globalPageNumber + 1 },
+      },
+      limit: 1,
+      req: guardedReq,
+    })
+    const nextPage = nextPageResult.docs[0] || null
+
+    // Update this page's navigation
+    await payload.update({
+      collection: 'pages',
+      id: pageId,
+      data: {
+        navigation: {
+          previousPage: prevPage?.id || null,
+          nextPage: nextPage?.id || null,
+          isFirstPage: !prevPage,
+          isLastPage: !nextPage,
+        },
+      },
+      req: guardedReq,
+    })
+
+    // Update previous page's nextPage to point to this page
+    if (prevPage) {
+      await payload.update({
+        collection: 'pages',
+        id: prevPage.id,
+        data: {
+          navigation: {
+            previousPage: prevPage.navigation?.previousPage || null,
+            nextPage: pageId,
+            isFirstPage: prevPage.navigation?.isFirstPage || false,
+            isLastPage: false,
+          },
+        },
+        req: guardedReq,
+      })
+    }
+
+    // Update next page's previousPage to point to this page
+    if (nextPage) {
+      await payload.update({
+        collection: 'pages',
+        id: nextPage.id,
+        data: {
+          navigation: {
+            previousPage: pageId,
+            nextPage: nextPage.navigation?.nextPage || null,
+            isFirstPage: false,
+            isLastPage: nextPage.navigation?.isLastPage || false,
+          },
+        },
+        req: guardedReq,
+      })
+    }
+
+    console.log(`🔗 Updated navigation for page ${pageId} (global #${globalPageNumber}): prev=${prevPage?.id || 'none'}, next=${nextPage?.id || 'none'}`)
+    return true
+  } catch (error) {
+    console.error('Error in updatePageNavigation:', error)
+    return false
+  }
+}
+
+// Fix adjacent pages' navigation after a page is deleted
+// Links the previous and next pages directly to each other
+async function fixAdjacentPagesAfterDelete(payload: any, comicId: string | number, deletedGlobalPageNumber: number, req: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const guardedReq = {
+    ...req,
+    skipGlobalPageCalculation: true,
+    skipComicStatsCalculation: true,
+    skipChapterStatsCalculation: true,
+    skipNavigationCalculation: true,
+  } as any
+
+  try {
+    // Find what was the previous page (globalPageNumber - 1)
+    const prevPageResult = await payload.find({
+      collection: 'pages',
+      where: {
+        comic: { equals: comicId },
+        globalPageNumber: { equals: deletedGlobalPageNumber - 1 },
+      },
+      limit: 1,
+      req: guardedReq,
+    })
+    const prevPage = prevPageResult.docs[0] || null
+
+    // Find what was the next page (globalPageNumber + 1)
+    const nextPageResult = await payload.find({
+      collection: 'pages',
+      where: {
+        comic: { equals: comicId },
+        globalPageNumber: { equals: deletedGlobalPageNumber + 1 },
+      },
+      limit: 1,
+      req: guardedReq,
+    })
+    const nextPage = nextPageResult.docs[0] || null
+
+    // Update previous page to point to next page (skipping the deleted one)
+    if (prevPage) {
+      await payload.update({
+        collection: 'pages',
+        id: prevPage.id,
+        data: {
+          navigation: {
+            previousPage: prevPage.navigation?.previousPage || null,
+            nextPage: nextPage?.id || null,
+            isFirstPage: prevPage.navigation?.isFirstPage || false,
+            isLastPage: !nextPage,
+          },
+        },
+        req: guardedReq,
+      })
+    }
+
+    // Update next page to point to previous page (skipping the deleted one)
+    if (nextPage) {
+      await payload.update({
+        collection: 'pages',
+        id: nextPage.id,
+        data: {
+          navigation: {
+            previousPage: prevPage?.id || null,
+            nextPage: nextPage.navigation?.nextPage || null,
+            isFirstPage: !prevPage,
+            isLastPage: nextPage.navigation?.isLastPage || false,
+          },
+        },
+        req: guardedReq,
+      })
+    }
+
+    console.log(`🔗 Fixed navigation after deleting page with global #${deletedGlobalPageNumber}: linked page ${prevPage?.id || 'none'} <-> page ${nextPage?.id || 'none'}`)
+    return true
+  } catch (error) {
+    console.error('Error in fixAdjacentPagesAfterDelete:', error)
     return false
   }
 }
