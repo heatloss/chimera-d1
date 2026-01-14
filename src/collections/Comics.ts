@@ -79,6 +79,32 @@ const deduplicateRelationships = async ({ doc }: { doc: any }) => {
       `).bind(i + 1, tagRows.results![i].id).run()
     }
 
+    // Also deduplicate credits array (stored in comics_credits table)
+    // Delete duplicate credit entries, keeping only the row with lowest id for each unique role+name combo
+    await d1.prepare(`
+      DELETE FROM comics_credits
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM comics_credits
+        WHERE _parent_id = ?
+        GROUP BY _parent_id, role, name
+      )
+      AND _parent_id = ?
+    `).bind(comicId, comicId).run()
+
+    // Re-sequence credit order values
+    const creditRows = await d1.prepare(`
+      SELECT id FROM comics_credits
+      WHERE _parent_id = ?
+      ORDER BY id
+    `).bind(comicId).all()
+
+    for (let i = 0; i < (creditRows.results?.length || 0); i++) {
+      await d1.prepare(`
+        UPDATE comics_credits SET "_order" = ? WHERE id = ?
+      `).bind(i + 1, creditRows.results![i].id).run()
+    }
+
     console.log(`✅ Deduplicated relationships for comic ${comicId}`)
   } catch (error) {
     console.error('⚠️ Failed to deduplicate relationships:', error)

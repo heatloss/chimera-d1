@@ -103,7 +103,9 @@ export async function POST(request: NextRequest) {
           chapterPageNumber: newPageNumber
         },
         req: {
-          skipNavigationCalculation: true, // Skip during parallel updates
+          skipNavigationCalculation: true,
+          skipComicStatsCalculation: true,
+          skipChapterStatsCalculation: true,
         } as any
       })
     })
