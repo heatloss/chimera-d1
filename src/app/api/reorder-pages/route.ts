@@ -91,12 +91,16 @@ export async function POST(request: NextRequest) {
     // Update chapterPageNumber for each page (1-indexed)
     // Skip navigation calculation during parallel updates to avoid race conditions
     // The beforeChange hook will automatically recalculate globalPageNumber
+    console.log(`📝 Reordering ${pageIds.length} pages in chapter ${chapterId}:`, pageIds)
+
     const updatePromises = pageIds.map((pageId, index) => {
+      const newPageNumber = index + 1
+      console.log(`  → Page ${pageId} will become chapterPageNumber ${newPageNumber}`)
       return payload.update({
         collection: 'pages',
         id: pageId,
         data: {
-          chapterPageNumber: index + 1
+          chapterPageNumber: newPageNumber
         },
         req: {
           skipNavigationCalculation: true, // Skip during parallel updates
@@ -104,7 +108,12 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    await Promise.all(updatePromises)
+    const results = await Promise.all(updatePromises)
+
+    // Log the results to verify updates succeeded
+    results.forEach((result, index) => {
+      console.log(`  ✓ Page ${result.id} now has chapterPageNumber ${result.chapterPageNumber}`)
+    })
 
     // Now recalculate navigation for all pages in the comic in one pass
     // This ensures correct navigation after all globalPageNumbers are updated
