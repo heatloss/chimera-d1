@@ -97,6 +97,10 @@ export async function POST(request: NextRequest) {
 
     await Promise.all(updatePromises)
 
+    // Reordering chapters changes globalPageNumber for all pages
+    // Recalculate globalPageNumber for all pages, then update navigation
+    await recalculateGlobalPageNumbersAndNavigation(payload, comicId)
+
     return NextResponse.json({
       message: 'Chapters reordered successfully',
       updatedChapters: chapterIds.length
@@ -127,4 +131,79 @@ function getCorsHeaders() {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   }
+}
+
+/**
+ * Recalculate globalPageNumber for all pages in a comic after chapter reorder,
+ * then update navigation links.
+ *
+ * This is needed because globalPageNumber depends on chapter order.
+ */
+async function recalculateGlobalPageNumbersAndNavigation(payload: any, comicId: string | number) {
+  const guardedReq = {
+    skipNavigationCalculation: true,
+    skipGlobalPageCalculation: true,
+    skipComicStatsCalculation: true,
+    skipChapterStatsCalculation: true,
+  } as any
+
+  // Get all chapters in order
+  const chaptersResult = await payload.find({
+    collection: 'chapters',
+    where: { comic: { equals: comicId } },
+    sort: 'order',
+    limit: 1000,
+    depth: 0,
+    req: guardedReq,
+  })
+
+  // Build a map of chapter order for quick lookup
+  const chapterOrderMap = new Map<number, number>()
+  chaptersResult.docs.forEach((ch: any, idx: number) => {
+    chapterOrderMap.set(ch.id, idx)
+  })
+
+  // Get all pages in the comic
+  const pagesResult = await payload.find({
+    collection: 'pages',
+    where: { comic: { equals: comicId } },
+    limit: 10000,
+    depth: 0,
+    req: guardedReq,
+  })
+
+  // Sort pages by chapter order, then by chapterPageNumber
+  const sortedPages = pagesResult.docs.sort((a: any, b: any) => {
+    const aChapterOrder = chapterOrderMap.get(a.chapter) ?? 999999
+    const bChapterOrder = chapterOrderMap.get(b.chapter) ?? 999999
+    if (aChapterOrder !== bChapterOrder) {
+      return aChapterOrder - bChapterOrder
+    }
+    return (a.chapterPageNumber || 0) - (b.chapterPageNumber || 0)
+  })
+
+  // Update globalPageNumber and navigation for each page
+  for (let i = 0; i < sortedPages.length; i++) {
+    const page = sortedPages[i]
+    const globalPageNumber = i + 1
+    const prevPage = i > 0 ? sortedPages[i - 1] : null
+    const nextPage = i < sortedPages.length - 1 ? sortedPages[i + 1] : null
+
+    await payload.update({
+      collection: 'pages',
+      id: page.id,
+      data: {
+        globalPageNumber,
+        navigation: {
+          previousPage: prevPage?.id || null,
+          nextPage: nextPage?.id || null,
+          isFirstPage: i === 0,
+          isLastPage: i === sortedPages.length - 1,
+        },
+      },
+      req: guardedReq,
+    })
+  }
+
+  console.log(`🔗 Recalculated globalPageNumber and navigation for ${sortedPages.length} pages in comic ${comicId}`)
 }

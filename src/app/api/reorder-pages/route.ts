@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update chapterPageNumber for each page (1-indexed)
+    // Skip navigation calculation during parallel updates to avoid race conditions
     // The beforeChange hook will automatically recalculate globalPageNumber
     const updatePromises = pageIds.map((pageId, index) => {
       return payload.update({
@@ -96,11 +97,19 @@ export async function POST(request: NextRequest) {
         id: pageId,
         data: {
           chapterPageNumber: index + 1
-        }
+        },
+        req: {
+          skipNavigationCalculation: true, // Skip during parallel updates
+        } as any
       })
     })
 
     await Promise.all(updatePromises)
+
+    // Now recalculate navigation for all pages in the comic in one pass
+    // This ensures correct navigation after all globalPageNumbers are updated
+    const comicId = typeof chapter.comic === 'object' ? chapter.comic.id : chapter.comic
+    await recalculateComicNavigation(payload, comicId)
 
     return NextResponse.json({
       message: 'Pages reordered successfully',
@@ -132,4 +141,64 @@ function getCorsHeaders() {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   }
+}
+
+/**
+ * Recalculate navigation for all pages in a comic
+ * This does a single pass through all pages sorted by globalPageNumber
+ * and sets previousPage/nextPage based on array position
+ */
+async function recalculateComicNavigation(payload: any, comicId: string | number) {
+  // Get all pages in the comic sorted by globalPageNumber
+  const allPages = await payload.find({
+    collection: 'pages',
+    where: {
+      comic: { equals: comicId },
+    },
+    sort: 'globalPageNumber',
+    limit: 10000, // Should be enough for any comic
+    depth: 0,
+    req: {
+      skipNavigationCalculation: true,
+      skipGlobalPageCalculation: true,
+      skipComicStatsCalculation: true,
+      skipChapterStatsCalculation: true,
+    } as any
+  })
+
+  const pages = allPages.docs
+
+  if (pages.length === 0) {
+    return
+  }
+
+  // Update each page's navigation based on its position in the sorted array
+  // Run sequentially to avoid any potential issues, but this is fast since
+  // we're just updating navigation fields with guard flags
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i]
+    const prevPage = i > 0 ? pages[i - 1] : null
+    const nextPage = i < pages.length - 1 ? pages[i + 1] : null
+
+    await payload.update({
+      collection: 'pages',
+      id: page.id,
+      data: {
+        navigation: {
+          previousPage: prevPage?.id || null,
+          nextPage: nextPage?.id || null,
+          isFirstPage: i === 0,
+          isLastPage: i === pages.length - 1,
+        },
+      },
+      req: {
+        skipNavigationCalculation: true, // Prevent hook from running
+        skipGlobalPageCalculation: true,
+        skipComicStatsCalculation: true,
+        skipChapterStatsCalculation: true,
+      } as any
+    })
+  }
+
+  console.log(`🔗 Recalculated navigation for ${pages.length} pages in comic ${comicId}`)
 }
