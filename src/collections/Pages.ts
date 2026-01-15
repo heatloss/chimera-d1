@@ -29,9 +29,10 @@ export const Pages: CollectionConfig = {
       if (user?.role === 'admin') return true
       if (user?.role === 'editor') return true
       if (!user?.id) return false
-      // Creators can only see pages for their own comics
+      // Creators can only see their own pages
+      // Using direct author field to avoid JOIN that causes ambiguous column bug
       return {
-        'comic.author': {
+        author: {
           equals: user.id,
         },
       }
@@ -40,9 +41,10 @@ export const Pages: CollectionConfig = {
       if (user?.role === 'admin') return true
       if (user?.role === 'editor') return true
       if (!user?.id) return false
-      // Creators can only edit pages for their own comics
+      // Creators can only edit their own pages
+      // Using direct author field to avoid JOIN that causes ambiguous column bug
       return {
-        'comic.author': {
+        author: {
           equals: user.id,
         },
       }
@@ -93,6 +95,22 @@ export const Pages: CollectionConfig = {
         }
         return undefined
       },
+    },
+    {
+      name: 'author',
+      type: 'relationship',
+      relationTo: 'users',
+      required: false,
+      label: 'Author',
+      admin: {
+        position: 'sidebar',
+        readOnly: true,
+        description: 'Auto-populated from comic author (used for access control)',
+      },
+      hooks: {
+        beforeValidate: [normalizeRelationshipId],
+      },
+      // Note: Auto-populated in beforeChange hook from comic.author
     },
     {
       name: 'chapter',
@@ -617,6 +635,26 @@ export const Pages: CollectionConfig = {
           data.createdOn = new Date()
         }
         data.updatedOn = new Date()
+
+        // Auto-populate author from comic's author
+        // This denormalization avoids a JOIN in access control queries that causes
+        // an "ambiguous column name: id" bug in the Drizzle D1 adapter
+        if (data.comic && req.payload) {
+          try {
+            const comicId = typeof data.comic === 'object' ? data.comic.id : data.comic
+            const comic = await req.payload.findByID({
+              collection: 'comics',
+              id: comicId,
+              depth: 0,
+            })
+            if (comic?.author) {
+              const authorId = typeof comic.author === 'object' ? comic.author.id : comic.author
+              data.author = authorId
+            }
+          } catch (error) {
+            console.error('Error fetching comic author for page:', error)
+          }
+        }
 
         // Auto-set publish date when status changes to published
         if (data.status === 'published' && !data.publishedDate) {

@@ -393,6 +393,10 @@ export interface Page {
    */
   comic: number | Comic;
   /**
+   * Auto-populated from comic author (used for access control)
+   */
+  author?: (number | null) | User;
+  /**
    * Which chapter this page belongs to (auto-assigned to "Unassigned Pages" if not selected)
    */
   chapter?: (number | null) | Chapter;
@@ -680,6 +684,7 @@ export interface ChaptersSelect<T extends boolean = true> {
  */
 export interface PagesSelect<T extends boolean = true> {
   comic?: T;
+  author?: T;
   chapter?: T;
   chapterPageNumber?: T;
   globalPageNumber?: T;

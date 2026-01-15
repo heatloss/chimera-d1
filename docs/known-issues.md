@@ -425,6 +425,36 @@ Frontend code needs to adjust accordingly: `comic.genres.map(g => g.genre)`
 
 ---
 
+## Ambiguous Column Name Bug with Nested Access Control
+
+**Issue:** When using dot-notation access control (like `'comic.author': { equals: user.id }`) that creates a JOIN, and Payload's DataLoader batch-loads records, the generated SQL has an unqualified `id IN (...)` clause that's ambiguous when both tables have an `id` column.
+
+**Error message:**
+```
+D1_ERROR: ambiguous column name: id at offset 219: SQLITE_ERROR
+```
+
+**Root cause:** The Drizzle D1 adapter doesn't qualify the `id` column with a table name when generating batch-load queries that also have JOINs from access control.
+
+**Workaround (implemented 2026-01-14):**
+Denormalize the field used in access control. For Pages, we added an `author` field that mirrors `comic.author`, allowing access control to use a direct field check instead of a JOIN:
+
+```typescript
+// ❌ DON'T USE - causes ambiguous column bug
+return { 'comic.author': { equals: user.id } }
+
+// ✅ USE THIS - no JOIN needed
+return { author: { equals: user.id } }
+```
+
+The `author` field is auto-populated from `comic.author` in the beforeChange hook.
+
+**Backfill endpoint:** `/api/backfill-page-authors` (POST, requires Editor/Admin)
+
+**TODO:** Monitor Payload/Drizzle releases for a fix. When fixed, the denormalized `author` field can remain (it's also more efficient), but the workaround documentation can be updated.
+
+---
+
 ## Future Enhancements
 
 ### Slug Validation Endpoint (UX Improvement)
@@ -464,5 +494,5 @@ Response:
 
 ---
 
-**Last Updated:** 2026-01-10
+**Last Updated:** 2026-01-14
 **Status:** Production-ready with documented limitations
