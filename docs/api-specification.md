@@ -4,7 +4,7 @@
 
 A webcomic content management system built on Payload CMS v3, deployed on Cloudflare Workers with D1 database and R2 storage. This API provides complete backend functionality for managing webcomic series, chapters, pages, users, and media assets with role-based access control.
 
-**Current Version**: January 2026 (Payload v3.69.0)
+**Current Version**: January 14, 2026 (Payload v3.69.0)
 
 ## Base URLs
 
@@ -198,6 +198,7 @@ Individual comic page management.
 {
   "id": 10,
   "comic": 1, // Integer ID (or full object if populated)
+  "author": 2, // Integer ID of user (denormalized from comic.author for access control)
   "chapter": 2, // Integer ID (or full object if populated)
   "chapterPageNumber": 1, // Page number within chapter (1-based, auto-assigned)
   "globalPageNumber": 15, // Auto-calculated sequential number across entire comic (1-based)
@@ -212,6 +213,7 @@ Individual comic page management.
     }
   ],
   "altText": "Description of what happens in this page",
+  "contentWarning": "Optional content warning (triggers blur overlay on frontend)",
   "authorNotes": "Author commentary and notes",
   "slug": "optional-page-title", // Top-level, unique within comic, auto-regenerates on chapter/title change
   "status": "draft|scheduled|published",
@@ -804,6 +806,58 @@ Authorization: Bearer jwt_token
 - Returns detailed results for each chapter processed
 - Admin or Editor role required
 
+#### Recalculate Page Navigation (`POST /api/recalculate-navigation`)
+
+Admin utility to recalculate navigation links (previousPage, nextPage, isFirstPage, isLastPage) for all pages in a comic. Useful after bulk imports, reordering operations, or data migrations.
+
+**Authentication Required**: Admin or Editor role
+
+```json
+// Request
+POST /api/recalculate-navigation
+Authorization: Bearer jwt_token
+{
+  "comicId": 1
+}
+
+// Response
+{
+  "message": "Navigation recalculated for 45 pages in comic 1"
+}
+```
+
+**Features:**
+- Recalculates previousPage, nextPage, isFirstPage, isLastPage for each page
+- Based on globalPageNumber order (seamless chapter transitions)
+- Runs sequentially to avoid race conditions
+- Admin or Editor role required
+
+#### Backfill Page Authors (`POST /api/backfill-page-authors`)
+
+Admin utility to populate the denormalized `author` field on pages from their comic's author. This is a one-time migration endpoint needed after adding the author field to the Pages collection.
+
+**Authentication Required**: Admin or Editor role
+
+```json
+// Request
+POST /api/backfill-page-authors
+Authorization: Bearer jwt_token
+
+// Response
+{
+  "message": "Page author backfill complete",
+  "updated": 180,
+  "errors": 0,
+  "total": 180
+}
+```
+
+**Features:**
+- Finds all pages without an author set
+- Looks up each page's comic and copies the comic's author to the page
+- Skips pages that already have an author or have no comic
+- Reports success/error counts
+
 ## Common Query Patterns
 
 ### Filtering and Sorting
@@ -1039,14 +1093,17 @@ Chimera CMS uses a dual numbering system for comic pages:
 
 ### Access Control Query Limitations
 
-**Issue**: Nested access control queries like `'comic.author': { equals: user.id }` don't work with the D1 adapter.
+**Issue**: Nested access control queries like `'comic.author': { equals: user.id }` cause "ambiguous column name: id" errors when combined with Payload's DataLoader batch queries.
+
+**Root Cause**: The Drizzle D1 adapter generates JOINs for nested access control checks, but doesn't qualify the `id` column in batch queries. When both `pages` and `comics` tables have an `id` column, SQLite can't resolve which one to use.
 
 **Workarounds Implemented**:
-- Access control functions manually fetch related records first
-- Then filter using simple `in` or `equals` queries
-- Example: Fetch user's comics, then filter pages by `comic: { in: comicIds }`
+- **Pages collection**: Added denormalized `author` field that mirrors `comic.author`
+  - Auto-populated from comic on page create/update
+  - Access control uses direct `author` check instead of `comic.author` (no JOIN needed)
+- For other collections: Access control functions manually fetch related records first, then filter using simple `in` or `equals` queries
 
-**Impact**: More complex access control logic and additional database queries required.
+**Impact**: New relationship fields may require denormalization to avoid JOINs in access control queries.
 
 ### Schema Migration Risks
 
@@ -1072,6 +1129,23 @@ Chimera CMS uses a dual numbering system for comic pages:
 **Impact**: Frontend should generate thumbnails using Canvas API for optimal bulk upload performance (50 files). Without client thumbnails, batch size is limited to ~20 files.
 
 ## Migration Notes
+
+### January 2026 Update (Navigation & Access Control Fix)
+- **New field**: Added `contentWarning` textarea to Pages - when populated, frontend can display a blur overlay
+- **New field**: Added `author` relationship to Pages (denormalized from comic.author)
+  - Auto-populated from comic's author on page create/update
+  - Required to fix "ambiguous column name: id" bug in D1 adapter (see Known Issues)
+- **New fields**: Added `navigation` group to Pages with `previousPage`, `nextPage`, `isFirstPage`, `isLastPage`
+  - Auto-calculated based on `globalPageNumber` for seamless chapter transitions
+  - Updated automatically when pages are created, updated, deleted, or reordered
+- **New endpoint**: `POST /api/recalculate-navigation` - Recalculate navigation for all pages in a comic
+- **New endpoint**: `POST /api/backfill-page-authors` - Backfill author field on existing pages
+- **Database migration required**:
+  ```sql
+  ALTER TABLE pages ADD COLUMN content_warning TEXT;
+  ALTER TABLE pages ADD COLUMN author_id INTEGER REFERENCES users(id);
+  ```
+- **Backfill required**: Run `/api/backfill-page-authors` after migration to populate author field
 
 ### January 2026 Update (Slug Refactor)
 - **BREAKING CHANGE**: Slugs moved from `seoMeta.slug` to top-level `slug` field for both Chapters and Pages
