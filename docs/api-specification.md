@@ -4,7 +4,7 @@
 
 A webcomic content management system built on Payload CMS v3, deployed on Cloudflare Workers with D1 database and R2 storage. This API provides complete backend functionality for managing webcomic series, chapters, pages, users, and media assets with role-based access control.
 
-**Current Version**: January 14, 2026 (Payload v3.69.0)
+**Current Version**: January 18, 2026 (Payload v3.69.0)
 
 ## Base URLs
 
@@ -753,84 +753,79 @@ Authorization: Bearer jwt_token
 
 ### Admin Utilities
 
-#### Recalculate Chapter Stats (`POST /api/recalculate-chapter-stats`)
+#### Recalculate Comic Pages (`POST /api/recalculate-comic-pages`)
 
-Admin utility to recalculate chapter statistics (pageCount, firstPageNumber, lastPageNumber) for chapters. Useful after bulk operations or data migrations.
+Comprehensive admin utility to recalculate all page-related data for a comic. Runs three recalculations in the correct dependency order:
 
-**Authentication Required**: Admin or Editor role
+1. **Global page numbers** - Based on chapter order and chapterPageNumber
+2. **Chapter stats** - pageCount, firstPageNumber, lastPageNumber for each chapter
+3. **Navigation** - previousPage, nextPage, isFirstPage, isLastPage for each page
 
-```json
-// Request - Recalculate for specific comic
-POST /api/recalculate-chapter-stats
-Authorization: Bearer jwt_token
-{
-  "comicId": 4
-}
-
-// Request - Recalculate ALL chapters
-POST /api/recalculate-chapter-stats
-Authorization: Bearer jwt_token
-{
-  "all": true
-}
-
-// Response
-{
-  "success": true,
-  "message": "Recalculated stats for 5 chapters (0 failed)",
-  "results": [
-    {
-      "chapterId": 1,
-      "title": "The Beginning",
-      "pageCount": 15,
-      "firstPageNumber": 1,
-      "lastPageNumber": 15,
-      "success": true
-    },
-    {
-      "chapterId": 2,
-      "title": "The Journey",
-      "pageCount": 12,
-      "firstPageNumber": 16,
-      "lastPageNumber": 27,
-      "success": true
-    }
-    // ... more chapters
-  ]
-}
-```
-
-**Features:**
-- Recalculates pageCount, firstPageNumber, and lastPageNumber for each chapter
-- Can target a specific comic or all chapters system-wide
-- Returns detailed results for each chapter processed
-- Admin or Editor role required
-
-#### Recalculate Page Navigation (`POST /api/recalculate-navigation`)
-
-Admin utility to recalculate navigation links (previousPage, nextPage, isFirstPage, isLastPage) for all pages in a comic. Useful after bulk imports, reordering operations, or data migrations.
+This is the recommended endpoint for fixing page data after bulk operations, data migrations, or when page numbering becomes corrupted.
 
 **Authentication Required**: Admin or Editor role
 
 ```json
 // Request
-POST /api/recalculate-navigation
+POST /api/recalculate-comic-pages
 Authorization: Bearer jwt_token
 {
-  "comicId": 1
+  "comicId": 4
 }
 
 // Response
 {
-  "message": "Navigation recalculated for 45 pages in comic 1"
+  "success": true,
+  "message": "Recalculated all page data for \"My Comic Title\"",
+  "results": {
+    "globalPageNumbers": {
+      "updated": 25,
+      "total": 26
+    },
+    "chapterStats": {
+      "updated": 3,
+      "chapters": [
+        {
+          "chapterId": 12,
+          "title": "Chapter 1",
+          "pageCount": 12,
+          "firstPageNumber": 1,
+          "lastPageNumber": 12,
+          "updated": true
+        },
+        {
+          "chapterId": 16,
+          "title": "Chapter 2",
+          "pageCount": 8,
+          "firstPageNumber": 13,
+          "lastPageNumber": 20,
+          "updated": true
+        }
+        // ... more chapters
+      ]
+    },
+    "navigation": {
+      "updated": 15
+    }
+  }
 }
 ```
 
 **Features:**
-- Recalculates previousPage, nextPage, isFirstPage, isLastPage for each page
-- Based on globalPageNumber order (seamless chapter transitions)
-- Runs sequentially to avoid race conditions
+- Runs all three recalculations in correct dependency order
+- Global page numbers are assigned sequentially based on chapter order, then chapterPageNumber within each chapter
+- Chapter stats are calculated from the corrected global page numbers
+- Navigation links are set based on the corrected global page number sequence
+- Returns detailed results showing what was updated
+- Only updates records that actually need changes (efficient)
 - Admin or Editor role required
+
+**When to use:**
+- After bulk page imports
+- After manual database changes
+- When pages have duplicate or missing global page numbers
+- When navigation links are broken or missing
+- When chapter stats don't match actual page counts
 
 #### Backfill Page Authors (`POST /api/backfill-page-authors`)
 
@@ -1130,6 +1125,15 @@ Chimera CMS uses a dual numbering system for comic pages:
 
 ## Migration Notes
 
+### January 18, 2026 Update (Unified Page Recalculation)
+- **New endpoint**: `POST /api/recalculate-comic-pages` - Comprehensive recalculation of all page data
+  - Replaces separate `recalculate-navigation` and `recalculate-chapter-stats` endpoints
+  - Runs global page numbers → chapter stats → navigation in correct dependency order
+  - Returns detailed results showing what was updated
+- **Removed endpoints**:
+  - `POST /api/recalculate-navigation` - Superseded by recalculate-comic-pages
+  - `POST /api/recalculate-chapter-stats` - Superseded by recalculate-comic-pages
+
 ### January 2026 Update (Navigation & Access Control Fix)
 - **New field**: Added `contentWarning` textarea to Pages - when populated, frontend can display a blur overlay
 - **New field**: Added `author` relationship to Pages (denormalized from comic.author)
@@ -1138,7 +1142,6 @@ Chimera CMS uses a dual numbering system for comic pages:
 - **New fields**: Added `navigation` group to Pages with `previousPage`, `nextPage`, `isFirstPage`, `isLastPage`
   - Auto-calculated based on `globalPageNumber` for seamless chapter transitions
   - Updated automatically when pages are created, updated, deleted, or reordered
-- **New endpoint**: `POST /api/recalculate-navigation` - Recalculate navigation for all pages in a comic
 - **New endpoint**: `POST /api/backfill-page-authors` - Backfill author field on existing pages
 - **Database migration required**:
   ```sql
