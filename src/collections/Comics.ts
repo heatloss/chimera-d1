@@ -105,6 +105,32 @@ const deduplicateRelationships = async ({ doc }: { doc: any }) => {
       `).bind(i + 1, creditRows.results![i].id).run()
     }
 
+    // Also deduplicate links array (stored in comics_links table)
+    // Delete duplicate link entries, keeping only the row with lowest id for each unique type+url combo
+    await d1.prepare(`
+      DELETE FROM comics_links
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM comics_links
+        WHERE _parent_id = ?
+        GROUP BY _parent_id, type, url
+      )
+      AND _parent_id = ?
+    `).bind(comicId, comicId).run()
+
+    // Re-sequence links order values
+    const linkRows = await d1.prepare(`
+      SELECT id FROM comics_links
+      WHERE _parent_id = ?
+      ORDER BY id
+    `).bind(comicId).all()
+
+    for (let i = 0; i < (linkRows.results?.length || 0); i++) {
+      await d1.prepare(`
+        UPDATE comics_links SET "_order" = ? WHERE id = ?
+      `).bind(i + 1, linkRows.results![i].id).run()
+    }
+
     console.log(`✅ Deduplicated relationships for comic ${comicId}`)
   } catch (error) {
     console.error('⚠️ Failed to deduplicate relationships:', error)
@@ -277,6 +303,72 @@ export const Comics: CollectionConfig = {
           label: 'Website/Social URL',
           admin: {
             description: "Optional link to creator's website or social media",
+          },
+        },
+      ],
+    },
+    {
+      name: 'links',
+      type: 'array',
+      label: 'Comic Links',
+      admin: {
+        description: 'Social media, support, and related links for this comic',
+      },
+      fields: [
+        {
+          name: 'type',
+          type: 'select',
+          required: true,
+          label: 'Link Type',
+          options: [
+            // Support/Funding
+            { label: 'Ko-fi', value: 'kofi' },
+            { label: 'Patreon', value: 'patreon' },
+            { label: 'PayPal', value: 'paypal' },
+            { label: 'GoFundMe', value: 'gofundme' },
+            // Social Media
+            { label: 'Tumblr', value: 'tumblr' },
+            { label: 'Bluesky', value: 'bluesky' },
+            { label: 'Twitter/X', value: 'twitter' },
+            { label: 'Mastodon', value: 'mastodon' },
+            { label: 'Instagram', value: 'instagram' },
+            { label: 'Facebook', value: 'facebook' },
+            { label: 'TikTok', value: 'tiktok' },
+            // Community/Streaming
+            { label: 'Discord', value: 'discord' },
+            { label: 'Twitch', value: 'twitch' },
+            { label: 'YouTube', value: 'youtube' },
+            // Shops/Merch
+            { label: 'Payhip', value: 'payhip' },
+            { label: 'Storenvy', value: 'storenvy' },
+            { label: 'Society6', value: 'society6' },
+            { label: 'Big Cartel', value: 'bigcartel' },
+            // Generic
+            { label: 'Website', value: 'website' },
+            { label: 'Other', value: 'other' },
+          ],
+        },
+        {
+          name: 'label',
+          type: 'text',
+          label: 'Display Label',
+          admin: {
+            description: 'Custom label (required for "Other" type, optional otherwise)',
+          },
+          validate: (val: string | null | undefined, { siblingData }: { siblingData: any }) => {
+            if (siblingData?.type === 'other' && !val) {
+              return 'Label is required when type is "Other"'
+            }
+            return true
+          },
+        },
+        {
+          name: 'url',
+          type: 'text',
+          required: true,
+          label: 'URL',
+          admin: {
+            description: 'Full URL including https://',
           },
         },
       ],

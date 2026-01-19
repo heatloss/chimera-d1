@@ -4,7 +4,7 @@
 
 A webcomic content management system built on Payload CMS v3, deployed on Cloudflare Workers with D1 database and R2 storage. This API provides complete backend functionality for managing webcomic series, chapters, pages, users, and media assets with role-based access control.
 
-**Current Version**: January 18, 2026 (Payload v3.69.0)
+**Current Version**: January 19, 2026 (Payload v3.69.0)
 
 ## Base URLs
 
@@ -132,6 +132,23 @@ Webcomic series management.
       "customRole": null,
       "name": "John Smith",
       "url": "https://johnsmith.art"
+    }
+  ],
+  "links": [
+    {
+      "type": "patreon",
+      "label": null,
+      "url": "https://patreon.com/mycomic"
+    },
+    {
+      "type": "bluesky",
+      "label": null,
+      "url": "https://bsky.app/profile/mycomic.bsky.social"
+    },
+    {
+      "type": "other",
+      "label": "My Store",
+      "url": "https://mystore.example.com"
     }
   ],
   "status": "draft|live|hiatus|completed",
@@ -515,6 +532,13 @@ GET /api/metadata
     { "label": "Artist", "value": "artist" },
     // ... 8 total role options (static)
   ],
+  "linkTypes": [
+    { "label": "Ko-fi", "value": "kofi" },
+    { "label": "Patreon", "value": "patreon" },
+    { "label": "Bluesky", "value": "bluesky" },
+    { "label": "Discord", "value": "discord" },
+    // ... 20 total link type options (static)
+  ],
   "publishSchedules": [
     { "label": "Daily", "value": "daily" },
     { "label": "Weekly", "value": "weekly" },
@@ -547,9 +571,9 @@ GET /api/metadata
 
 **Features:**
 - No authentication required (public configuration data)
-- Returns all available options for credit roles, publishing schedules, genres, tags, and statuses
+- Returns all available options for credit roles, link types, publishing schedules, genres, tags, and statuses
 - **Genres and Tags are dynamic** - fetched from their respective collections (can be managed via admin)
-- Credit roles, schedules, and statuses remain static configuration values
+- Credit roles, link types, schedules, and statuses remain static configuration values
 - Used to populate dropdown menus and multi-select components
 
 ### Chapter Management
@@ -1124,6 +1148,25 @@ Chimera CMS uses a dual numbering system for comic pages:
 **Impact**: Frontend should generate thumbnails using Canvas API for optimal bulk upload performance (50 files). Without client thumbnails, batch size is limited to ~20 files.
 
 ## Migration Notes
+
+### January 19, 2026 Update (Comic Links)
+- **New field**: Added `links` array field to Comics collection
+  - Supports social media, support/funding, shops, and community links
+  - 20 predefined link types: kofi, patreon, paypal, gofundme, tumblr, bluesky, twitter, mastodon, instagram, facebook, tiktok, discord, twitch, youtube, payhip, storenvy, society6, bigcartel, website, other
+  - "Other" type requires a custom label; other types use predefined labels (optional override)
+- **Updated endpoint**: `GET /api/metadata` now includes `linkTypes` in response
+- **Database migration required**:
+  ```sql
+  CREATE TABLE comics_links (
+    _order integer NOT NULL,
+    _parent_id integer NOT NULL,
+    id text PRIMARY KEY NOT NULL,
+    type text NOT NULL,
+    label text,
+    url text NOT NULL,
+    FOREIGN KEY (_parent_id) REFERENCES comics(id) ON UPDATE no action ON DELETE cascade
+  );
+  ```
 
 ### January 18, 2026 Update (Unified Page Recalculation)
 - **New endpoint**: `POST /api/recalculate-comic-pages` - Comprehensive recalculation of all page data

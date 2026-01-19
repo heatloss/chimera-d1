@@ -61,6 +61,7 @@ export async function GET() {
 
   const metadata = {
     creditRoles: getNestedFieldOptions(Comics.fields, 'credits', 'role'),
+    linkTypes: getNestedFieldOptions(Comics.fields, 'links', 'type'),
     publishSchedules: getFieldOptions(Comics.fields, 'publishSchedule'),
     genres: genresResult.docs.map((g) => ({ label: g.name, value: g.id })),
     tags: tagsResult.docs.map((t) => ({ label: t.name, value: t.id })),

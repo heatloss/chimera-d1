@@ -26,10 +26,9 @@ export async function generateThumbnailsPhoton(
       return []
     }
 
-    // Convert file to ArrayBuffer for fetch body compatibility
-    const inputBuffer = file instanceof Buffer
-      ? file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength)
-      : file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength)
+    // Create a copy of the file data as a plain Uint8Array
+    // This ensures we have a clean ArrayBuffer that's valid as BodyInit
+    const inputBuffer = Uint8Array.from(file)
 
     for (const size of THUMBNAIL_SIZES) {
       try {

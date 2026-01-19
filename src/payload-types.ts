@@ -195,6 +195,43 @@ export interface Comic {
         id?: string | null;
       }[]
     | null;
+  /**
+   * Social media, support, and related links for this comic
+   */
+  links?:
+    | {
+        type:
+          | 'kofi'
+          | 'patreon'
+          | 'paypal'
+          | 'gofundme'
+          | 'tumblr'
+          | 'bluesky'
+          | 'twitter'
+          | 'mastodon'
+          | 'instagram'
+          | 'facebook'
+          | 'tiktok'
+          | 'discord'
+          | 'twitch'
+          | 'youtube'
+          | 'payhip'
+          | 'storenvy'
+          | 'society6'
+          | 'bigcartel'
+          | 'website'
+          | 'other';
+        /**
+         * Custom label (required for "Other" type, optional otherwise)
+         */
+        label?: string | null;
+        /**
+         * Full URL including https://
+         */
+        url: string;
+        id?: string | null;
+      }[]
+    | null;
   status: 'draft' | 'live' | 'hiatus' | 'completed';
   publishSchedule: 'daily' | 'weekly' | 'twice-weekly' | 'monthly' | 'irregular' | 'completed' | 'inactive';
   /**
@@ -627,6 +664,14 @@ export interface ComicsSelect<T extends boolean = true> {
         role?: T;
         customRole?: T;
         name?: T;
+        url?: T;
+        id?: T;
+      };
+  links?:
+    | T
+    | {
+        type?: T;
+        label?: T;
         url?: T;
         id?: T;
       };
