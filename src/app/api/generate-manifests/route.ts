@@ -38,6 +38,7 @@ interface ComicIndexEntry {
   latestPageDate: string | null
   route: string
   credits: Array<{ role: string; name: string; url?: string }> | null
+  links: Array<{ type: string; label?: string; url: string }> | null
   genres: string[] | null
   tags: string[] | null
 }
@@ -85,6 +86,7 @@ interface ComicManifest {
     description: string | null
     thumbnail: string | null
     credits: Array<{ role: string; name: string; url?: string }> | null
+    links: Array<{ type: string; label?: string; url: string }> | null
     genres: string[] | null
     tags: string[] | null
   }
@@ -233,6 +235,15 @@ async function generateComicsIndex(
         }))
       : null
 
+    // Extract links
+    const links = Array.isArray(comic.links)
+      ? comic.links.map((l: any) => ({
+          type: l.type,
+          label: l.label || undefined,
+          url: l.url,
+        }))
+      : null
+
     // Extract genres
     const genres = Array.isArray(comic.genres)
       ? comic.genres.map((g: any) => (typeof g === 'object' ? g.name : g)).filter(Boolean)
@@ -253,6 +264,7 @@ async function generateComicsIndex(
       latestPageDate: pagesQuery.docs[0]?.publishedDate || null,
       route: `/${comic.slug}/`,
       credits,
+      links,
       genres,
       tags,
     })
@@ -382,6 +394,15 @@ async function generateComicManifest(
       }))
     : null
 
+  // Extract links
+  const links = Array.isArray(comic.links)
+    ? comic.links.map((l: any) => ({
+        type: l.type,
+        label: l.label || undefined,
+        url: l.url,
+      }))
+    : null
+
   return {
     version: '1.0',
     generatedAt,
@@ -393,6 +414,7 @@ async function generateComicManifest(
       description: comic.description || null,
       thumbnail: coverImage?.filename ? `/api/media/file/${coverImage.filename}` : null,
       credits,
+      links,
       genres,
       tags,
     },
