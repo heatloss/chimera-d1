@@ -331,20 +331,20 @@ async function generateComicManifest(
   // Helper to build a ManifestPage from a page document
   const buildManifestPage = (page: any): ManifestPage => {
     const pageImage = typeof page.pageImage === 'object' ? page.pageImage : null
-    const thumbnailImage = typeof page.thumbnailImage === 'object' ? page.thumbnailImage : null
 
     // Generate srcset-ready image URLs
     // baseName is the filename without extension (e.g., "abc123" from "abc123.jpg")
     const filename = pageImage?.filename || ''
     const baseName = filename.replace(/\.[^.]+$/, '')
 
-    // Get thumbnail URLs from imageSizes (400px and 800px pre-generated thumbnails)
-    // imageSizes is an array: [{ name: 'thumbnail', url: '...', ... }, { name: 'thumbnail_large', ... }]
+    // Get thumbnail URLs from pageImage.imageSizes (400px and 800px pre-generated thumbnails)
+    // Using pageImage instead of thumbnailImage since they should reference the same Media
+    // and pageImage is the source of truth (thumbnailImage auto-populates from it)
     let thumbnailUrl: string | null = null
     let thumbnailLargeUrl: string | null = null
-    if (thumbnailImage?.imageSizes && Array.isArray(thumbnailImage.imageSizes)) {
-      const thumb = thumbnailImage.imageSizes.find((s: any) => s.name === 'thumbnail')
-      const thumbLarge = thumbnailImage.imageSizes.find((s: any) => s.name === 'thumbnail_large')
+    if (pageImage?.imageSizes && Array.isArray(pageImage.imageSizes)) {
+      const thumb = pageImage.imageSizes.find((s: any) => s.name === 'thumbnail')
+      const thumbLarge = pageImage.imageSizes.find((s: any) => s.name === 'thumbnail_large')
       thumbnailUrl = thumb?.url || null
       thumbnailLargeUrl = thumbLarge?.url || null
     }
