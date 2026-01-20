@@ -27,7 +27,7 @@ export const THUMBNAIL_SIZES: ThumbnailSize[] = [
     height: undefined,
     fit: 'inside',
     position: 'centre',
-    quality: 80, // Slightly higher quality for larger thumbnail
+    quality: 67,
   },
 ]
 

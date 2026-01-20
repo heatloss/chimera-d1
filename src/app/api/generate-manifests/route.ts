@@ -58,7 +58,8 @@ interface ManifestPage {
     mobile: string     // /api/pub/media/mobile/baseName.webp (960w)
     desktop: string    // /api/pub/media/desktop/baseName.webp (1440w)
   }
-  thumbnail: string | null
+  thumbnail: string | null       // 400px pre-generated WebP
+  thumbnailLarge: string | null  // 800px pre-generated WebP
   width: number | null
   height: number | null
   title: string | null
@@ -254,12 +255,19 @@ async function generateComicsIndex(
       ? comic.tags.map((t: any) => (typeof t === 'object' ? t.name : t)).filter(Boolean)
       : null
 
+    // Get thumbnail URL from imageSizes (400px pre-generated thumbnail)
+    let thumbnailUrl: string | null = null
+    if (coverImage?.imageSizes && Array.isArray(coverImage.imageSizes)) {
+      const thumb = coverImage.imageSizes.find((s: any) => s.name === 'thumbnail')
+      thumbnailUrl = thumb?.url || null
+    }
+
     entries.push({
       id: comic.id,
       slug: comic.slug,
       title: comic.title,
       tagline: comic.description?.substring(0, 200) || null,
-      thumbnail: coverImage?.filename ? `/api/media/file/${coverImage.filename}` : null,
+      thumbnail: thumbnailUrl,
       pageCount: pagesQuery.totalDocs,
       latestPageDate: pagesQuery.docs[0]?.publishedDate || null,
       route: `/${comic.slug}/`,
@@ -330,6 +338,17 @@ async function generateComicManifest(
     const filename = pageImage?.filename || ''
     const baseName = filename.replace(/\.[^.]+$/, '')
 
+    // Get thumbnail URLs from imageSizes (400px and 800px pre-generated thumbnails)
+    // imageSizes is an array: [{ name: 'thumbnail', url: '...', ... }, { name: 'thumbnail_large', ... }]
+    let thumbnailUrl: string | null = null
+    let thumbnailLargeUrl: string | null = null
+    if (thumbnailImage?.imageSizes && Array.isArray(thumbnailImage.imageSizes)) {
+      const thumb = thumbnailImage.imageSizes.find((s: any) => s.name === 'thumbnail')
+      const thumbLarge = thumbnailImage.imageSizes.find((s: any) => s.name === 'thumbnail_large')
+      thumbnailUrl = thumb?.url || null
+      thumbnailLargeUrl = thumbLarge?.url || null
+    }
+
     return {
       slug: page.slug || null,
       globalPageNumber: page.globalPageNumber,
@@ -339,7 +358,8 @@ async function generateComicManifest(
         mobile: baseName ? `/api/pub/media/mobile/${baseName}.webp` : '',
         desktop: baseName ? `/api/pub/media/desktop/${baseName}.webp` : '',
       },
-      thumbnail: thumbnailImage?.filename ? `/api/media/file/${thumbnailImage.filename}` : null,
+      thumbnail: thumbnailUrl,
+      thumbnailLarge: thumbnailLargeUrl,
       width: pageImage?.width || null,
       height: pageImage?.height || null,
       title: page.title || null,
@@ -374,6 +394,13 @@ async function generateComicManifest(
   // Calculate total pages and page range from all chapters
   const allPageNumbers = chapters.flatMap(ch => ch.pages.map(p => p.globalPageNumber))
   const coverImage = typeof comic.coverImage === 'object' ? comic.coverImage : null
+
+  // Get thumbnail URL from imageSizes (400px pre-generated thumbnail)
+  let coverThumbnailUrl: string | null = null
+  if (coverImage?.imageSizes && Array.isArray(coverImage.imageSizes)) {
+    const thumb = coverImage.imageSizes.find((s: any) => s.name === 'thumbnail')
+    coverThumbnailUrl = thumb?.url || null
+  }
 
   // Extract genres if populated
   const genres = Array.isArray(comic.genres)
@@ -412,7 +439,7 @@ async function generateComicManifest(
       title: comic.title,
       tagline: comic.description?.substring(0, 200) || null,
       description: comic.description || null,
-      thumbnail: coverImage?.filename ? `/api/media/file/${coverImage.filename}` : null,
+      thumbnail: coverThumbnailUrl,
       credits,
       links,
       genres,
