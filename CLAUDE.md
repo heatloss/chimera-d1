@@ -29,7 +29,7 @@ Slugs are unique per-comic, not globally.
 The database adapter uses a lazy binding pattern in `payload.config.ts`. This ensures fresh DB context per request in Workers. Without it, DELETE operations appear to succeed but don't actually delete. Don't simplify this pattern.
 
 ### hasMany Relationship Deduplication
-D1 adapter has a bug where `hasMany` relationships accumulate duplicates on each save. Comics collection has an `afterChange` hook that deduplicates `genres`, `tags`, and `credits`. If adding new hasMany relationships or array fields, consider adding similar deduplication.
+D1 adapter has a bug where `hasMany` relationships accumulate duplicates on each save. Comics collection has an `afterChange` hook that deduplicates `genres`, `tags`, `credits`, and `links`. If adding new hasMany relationships or array fields, consider adding similar deduplication.
 
 ### Array Fields + Concurrent Updates (WORKAROUND IN PLACE)
 The D1 adapter causes UNIQUE constraint failures when concurrent requests update a document with array fields. It does DELETE + INSERT with explicit IDs instead of UPSERT.

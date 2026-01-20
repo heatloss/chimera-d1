@@ -4,7 +4,7 @@
 
 A webcomic content management system built on Payload CMS v3, deployed on Cloudflare Workers with D1 database and R2 storage. This API provides complete backend functionality for managing webcomic series, chapters, pages, users, and media assets with role-based access control.
 
-**Current Version**: January 19, 2026 (Payload v3.69.0)
+**Current Version**: January 20, 2026 (Payload v3.72.0)
 
 ## Base URLs
 
