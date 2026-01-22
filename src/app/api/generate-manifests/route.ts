@@ -79,7 +79,7 @@ interface ManifestChapter {
 interface ComicManifest {
   version: string
   generatedAt: string
-  comic: {
+  meta: {
     id: number
     slug: string
     title: string
@@ -286,7 +286,7 @@ async function generateComicsIndex(
   })
 
   return {
-    version: '1.0',
+    version: '1.1',
     generatedAt,
     comics: entries,
   }
@@ -431,9 +431,9 @@ async function generateComicManifest(
     : null
 
   return {
-    version: '1.0',
+    version: '1.1',
     generatedAt,
-    comic: {
+    meta: {
       id: comic.id,
       slug: comic.slug,
       title: comic.title,
