@@ -65,6 +65,7 @@ interface ManifestPage {
   title: string | null
   altText: string | null
   authorNote: string | null
+  contentWarning: string | null
   publishedDate: string | null
 }
 
@@ -365,6 +366,7 @@ async function generateComicManifest(
       title: page.title || null,
       altText: page.altText || null,
       authorNote: page.authorNotes || null,
+      contentWarning: page.contentWarning || null,
       publishedDate: page.publishedDate || null,
     }
   }
