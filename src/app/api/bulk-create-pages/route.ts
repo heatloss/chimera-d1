@@ -1,5 +1,6 @@
 import { getPayload } from 'payload'
 import config from '@/payload.config'
+import { getCloudflareContext } from '@opennextjs/cloudflare'
 import { NextRequest, NextResponse } from 'next/server'
 
 // Configuration constants
@@ -142,8 +143,8 @@ export async function POST(request: NextRequest) {
           .toLowerCase();                  // Lowercase for consistency
 
         // Get R2 bucket to manually upload files (R2 plugin doesn't work with programmatic uploads)
-        const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
-        const bucket = cloudflare?.env?.R2
+        const { env } = await getCloudflareContext({ async: true })
+        const bucket = env?.R2
 
         if (!bucket) {
           throw new Error('R2 bucket not configured')

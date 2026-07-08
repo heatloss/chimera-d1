@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 // Helper hook to normalize string IDs to integers for D1 adapter compatibility
 const normalizeRelationshipId = ({ value }: { value?: any }) => {
@@ -17,8 +18,8 @@ const normalizeRelationshipId = ({ value }: { value?: any }) => {
  */
 const deduplicateRelationships = async ({ doc }: { doc: any }) => {
   try {
-    const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
-    const d1 = cloudflare?.env?.D1
+    const { env } = await getCloudflareContext({ async: true })
+    const d1 = env?.D1
     if (!d1) {
       console.warn('⚠️ D1 not available for relationship deduplication')
       return doc

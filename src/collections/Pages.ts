@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { getCloudflareContext } from '@opennextjs/cloudflare'
 import { findOrCreateUnassignedChapter } from './Chapters'
 
 // Helper hook to normalize string IDs to integers for D1 adapter compatibility
@@ -1005,8 +1006,8 @@ async function updateComicPageStatistics(payload: any, comicId: string, req: any
 
     // WORKAROUND: Use raw D1 SQL to update only stats columns
     // This avoids the array field re-insertion bug in the D1 adapter
-    const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
-    const d1 = cloudflare?.env?.D1
+    const { env } = await getCloudflareContext({ async: true })
+    const d1 = env?.D1
 
     if (d1) {
       // Raw SQL update - only touches stats columns, leaves arrays alone

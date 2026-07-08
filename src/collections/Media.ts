@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { getCloudflareContext } from '@opennextjs/cloudflare'
 // NOTE: Using dynamic imports to avoid bundling Sharp into Workers build
 
 // Helper hook to normalize string IDs to integers for D1 adapter compatibility
@@ -187,8 +188,8 @@ export const Media: CollectionConfig = {
           console.log(`🎨 Processing image upload: ${req.file.name}`)
 
           // Get R2 bucket (needed for both main image and thumbnails)
-          const cloudflare = (globalThis as any).__CLOUDFLARE_CONTEXT__
-          const bucket = cloudflare?.env?.R2
+          const { env } = await getCloudflareContext({ async: true })
+          const bucket = env?.R2
 
           if (bucket) {
             // WORKAROUND: R2 storage plugin doesn't work with programmatic uploads

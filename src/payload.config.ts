@@ -30,7 +30,20 @@ const cloudflare = isCloudflareWorkers
   ? await getCloudflareContext({ async: true })
   : await getCloudflareContextFromWrangler()
 
-// Store cloudflare context globally for access in hooks
+// Store cloudflare context globally.
+//
+// NOTE: This is INTENTIONALLY retained — do not delete it as "cleanup".
+// Request-path hooks and routes must NOT read this global: the module-level
+// context goes stale during a live Worker request (caused the DELETE-succeeds-
+// but-doesn't-delete bug), so those call sites use `await getCloudflareContext(
+// { async: true })` to fetch a fresh request-scoped binding instead.
+//
+// This global is still load-bearing for two contexts that run OUTSIDE a Worker
+// request, where getCloudflareContext() has no request scope to resolve:
+//   1. Standalone tsx scripts (scripts/regenerate*-thumbnails.ts), where the
+//      binding comes from getCloudflareContextFromWrangler() below.
+//   2. The d1-diagnostic route, which deliberately compares this global against
+//      the OpenNext context to detect binding staleness.
 if (typeof globalThis !== 'undefined') {
   (globalThis as any).__CLOUDFLARE_CONTEXT__ = cloudflare
 }
