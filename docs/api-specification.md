@@ -851,31 +851,14 @@ Authorization: Bearer jwt_token
 - When navigation links are broken or missing
 - When chapter stats don't match actual page counts
 
-#### Backfill Page Authors (`POST /api/backfill-page-authors`)
+#### Backfill Page Authors — REMOVED
 
-Admin utility to populate the denormalized `author` field on pages from their comic's author. This is a one-time migration endpoint needed after adding the author field to the Pages collection.
-
-**Authentication Required**: Admin or Editor role
-
-```json
-// Request
-POST /api/backfill-page-authors
-Authorization: Bearer jwt_token
-
-// Response
-{
-  "message": "Page author backfill complete",
-  "updated": 180,
-  "errors": 0,
-  "total": 180
-}
-```
-
-**Features:**
-- Finds all pages without an author set
-- Looks up each page's comic and copies the comic's author to the page
-- Skips pages that already have an author or have no comic
-- Reports success/error counts
+`POST /api/backfill-page-authors` was a one-time migration endpoint that
+populated the denormalized `author` field on pre-existing pages. All pages now
+carry `author` (auto-populated in the Pages beforeChange hook), and the
+underlying "ambiguous column name" bug it supported was fixed in Payload 3.73.0,
+so the endpoint was removed during the 3.86 upgrade. The `author` field itself
+remains as a JOIN-avoiding access-control optimization.
 
 ## Common Query Patterns
 
@@ -1185,13 +1168,13 @@ Chimera CMS uses a dual numbering system for comic pages:
 - **New fields**: Added `navigation` group to Pages with `previousPage`, `nextPage`, `isFirstPage`, `isLastPage`
   - Auto-calculated based on `globalPageNumber` for seamless chapter transitions
   - Updated automatically when pages are created, updated, deleted, or reordered
-- **New endpoint**: `POST /api/backfill-page-authors` - Backfill author field on existing pages
+- **New endpoint**: `POST /api/backfill-page-authors` - Backfill author field on existing pages _(removed in the July 2026 Payload 3.86 upgrade — one-time migration, no longer needed)_
 - **Database migration required**:
   ```sql
   ALTER TABLE pages ADD COLUMN content_warning TEXT;
   ALTER TABLE pages ADD COLUMN author_id INTEGER REFERENCES users(id);
   ```
-- **Backfill required**: Run `/api/backfill-page-authors` after migration to populate author field
+- **Backfill required**: Run `/api/backfill-page-authors` after migration to populate author field _(historical — endpoint since removed)_
 
 ### January 2026 Update (Slug Refactor)
 - **BREAKING CHANGE**: Slugs moved from `seoMeta.slug` to top-level `slug` field for both Chapters and Pages

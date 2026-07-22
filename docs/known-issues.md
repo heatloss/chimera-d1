@@ -427,6 +427,17 @@ Frontend code needs to adjust accordingly: `comic.genres.map(g => g.genre)`
 
 ## Ambiguous Column Name Bug with Nested Access Control
 
+**STATUS: FIXED UPSTREAM in Payload 3.73.0** (issue #15196, PR #15290). Verified
+on 3.86.0 — JOIN-form access control (`'comic.author': { equals: user.id }`) no
+longer throws `ambiguous column name: id`. The one-time `/api/backfill-page-authors`
+endpoint has been removed (commit on the 3.86 upgrade branch).
+
+We **keep** the denormalized `pages.author` field: it's a legitimate
+JOIN-avoiding optimization (direct field check beats a JOIN on every
+access-control query), not merely a bug workaround. It stays auto-populated from
+`comic.author` in the beforeChange hook. The history below is retained for
+context.
+
 **Issue:** When using dot-notation access control (like `'comic.author': { equals: user.id }`) that creates a JOIN, and Payload's DataLoader batch-loads records, the generated SQL has an unqualified `id IN (...)` clause that's ambiguous when both tables have an `id` column.
 
 **Error message:**
@@ -449,9 +460,13 @@ return { author: { equals: user.id } }
 
 The `author` field is auto-populated from `comic.author` in the beforeChange hook.
 
-**Backfill endpoint:** `/api/backfill-page-authors` (POST, requires Editor/Admin)
+**Backfill endpoint:** removed. It was `/api/backfill-page-authors` (POST,
+Editor/Admin), a one-time migration to populate `author` on pre-existing pages.
+All pages now carry `author`, so the endpoint is no longer needed and was deleted
+during the Payload 3.86 upgrade.
 
-**TODO:** Monitor Payload/Drizzle releases for a fix. When fixed, the denormalized `author` field can remain (it's also more efficient), but the workaround documentation can be updated.
+**Resolution:** Fixed in Payload 3.73.0 (PR #15290). No further monitoring needed.
+The denormalized `author` field remains as an optimization.
 
 ---
 
