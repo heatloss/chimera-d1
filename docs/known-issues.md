@@ -477,6 +477,12 @@ The denormalized `author` field remains as an optimization.
 fixed — deliberately deferred out of the visibility/timestamp split. Tracked as
 P1 in `docs/roadmap/LAUNCH-BLOCKERS.md`.
 
+**Provenance:** this long predates the July 2026 visibility/timestamp split,
+which touched none of the code involved. Comic 3's duplicate numbering is already
+present in `backup-before-array-migration-20251204`, i.e. *before* navigation
+links existed at all (`81f2d4c`, Jan 13 2026) — so defect 2 below is the older
+and more fundamental of the two, and defect 1 cannot explain comic 3.
+
 **Issue:** Deleting a page — especially several pages at once — leaves the comic
 with duplicate/gapped `globalPageNumber` values and a broken `navigation`
 doubly-linked list. Pages become unreachable by forward/backward navigation, and
