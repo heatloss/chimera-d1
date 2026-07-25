@@ -181,14 +181,14 @@ export async function POST(request: NextRequest) {
     // Create a test page
     const now = new Date().toISOString()
     const result = await d1.prepare(`
-      INSERT INTO pages (comic, chapter, chapter_page_number, global_page_number, status, created_at, updated_at)
+      INSERT INTO pages (comic, chapter, chapter_page_number, global_page_number, visibility, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).bind(
       4, // comic ID - assuming comic 4 exists
       10, // chapter ID - assuming chapter 10 exists
       999, // chapter_page_number - high number to avoid conflicts
       999, // global_page_number
-      'draft',
+      'private',
       now,
       now
     ).run()
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Verify the insert
-    const verifyResult = await d1.prepare('SELECT id, status FROM pages WHERE id = ?')
+    const verifyResult = await d1.prepare('SELECT id, visibility FROM pages WHERE id = ?')
       .bind(result.meta?.last_row_id)
       .first()
 

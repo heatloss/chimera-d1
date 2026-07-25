@@ -65,8 +65,9 @@ export async function GET() {
     publishSchedules: getFieldOptions(Comics.fields, 'publishSchedule'),
     genres: genresResult.docs.map((g) => ({ label: g.name, value: g.id })),
     tags: tagsResult.docs.map((t) => ({ label: t.name, value: t.id })),
-    comicStatuses: getFieldOptions(Comics.fields, 'status'),
-    pageStatuses: getFieldOptions(Pages.fields, 'status'),
+    comicVisibilities: getFieldOptions(Comics.fields, 'visibility'),
+    comicLifecycles: getFieldOptions(Comics.fields, 'lifecycle'),
+    pageVisibilities: getFieldOptions(Pages.fields, 'visibility'),
   }
 
   return NextResponse.json(metadata, { headers: corsHeaders })

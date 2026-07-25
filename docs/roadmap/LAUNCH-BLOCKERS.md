@@ -63,6 +63,28 @@ Priority tiers:
 
 ## P1 — Core product (no self-service platform without these)
 
+- [ ] **[ABSENT] No scheduled-publish cron.** The visibility/timestamp split
+  (July 25, 2026 — see `docs/visibility-model.md`) makes a page "queued" when it
+  is `public` with a future `publishedDate`. Nothing makes a queued page go live
+  on its own: the public read surface is static R2 manifests, so a queued page's
+  date passing has **no public effect** until `/api/generate-manifests` runs. A
+  creator can schedule a page today and it will silently never appear. — backend
+
+  Target: Cloudflare Cron Trigger every **30 minutes** regenerating manifests.
+  (30 min is the deliberate launch granularity; finer polling is a
+  scale-up-later problem.) Known prerequisites, already scouted:
+  - OpenNext exposes **no config hook** for a `scheduled` handler. Needs a
+    hand-written `worker.ts` that imports `.open-next/worker.js`, re-exports its
+    Durable Object classes, and is pointed at by wrangler's `main`. Getting the
+    DO re-exports wrong breaks the whole Worker, so this is delicate.
+  - `generate-manifests`' POST handler requires admin/editor auth
+    (`src/app/api/generate-manifests/route.ts:107-114`). The generation logic
+    must be extracted into a plain function callable with no headers and no
+    `user` before cron can invoke it.
+  - Open design question: whether the cron needs to detect the *crossing* window
+    (pages whose date passed since the last run) or can stay stateless and
+    unconditionally regenerate. Stateless is simpler and idempotent; crossing
+    detection needs a stored "last run" timestamp somewhere.
 - [ ] **[ABSENT] No comic-creation UI.** The admin never calls `POST /comics`
   (only GET list + PATCH). A new creator has no way to start a comic. — admin
 - [ ] **[ABSENT] No signup / creator-onboarding UI.** Backend has `/register`

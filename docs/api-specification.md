@@ -4,7 +4,7 @@
 
 A webcomic content management system built on Payload CMS v3, deployed on Cloudflare Workers with D1 database and R2 storage. This API provides complete backend functionality for managing webcomic series, chapters, pages, users, and media assets with role-based access control.
 
-**Current Version**: January 20, 2026 (Payload v3.72.0)
+**Current Version**: July 25, 2026 (Payload v3.86.0)
 
 ## Base URLs
 
@@ -151,7 +151,8 @@ Webcomic series management.
       "url": "https://mystore.example.com"
     }
   ],
-  "status": "draft|live|hiatus|completed",
+  "visibility": "private|public", // Is this comic publicly visible at all?
+  "lifecycle": "ongoing|hiatus|completed", // Where the series is in its run
   "publishSchedule": "daily|weekly|twice-weekly|monthly|irregular|completed|inactive",
   "genres": [1, 2, 3], // Integer IDs from genres collection (or full objects if populated)
   "tags": [1, 4], // Integer IDs from tags collection (or full objects if populated)
@@ -170,6 +171,15 @@ Webcomic series management.
   "updatedAt": "2024-01-15T10:30:00Z"
 }
 ```
+
+**Note on `visibility` and `lifecycle`:** These replaced the old single `status`
+enum (`draft|live|hiatus|completed`) in July 2026. They are independent axes and
+all six combinations are legal — a comic can be on hiatus and private, completed
+and private, etc. `visibility: "public"` is necessary but not sufficient for a
+comic to appear on the public site; it also needs at least one live page.
+Lifecycle is deliberately **not** consulted when generating manifests, since a
+paused or finished comic is still a readable archive. See
+[`visibility-model.md`](./visibility-model.md).
 
 **Note on Genres and Tags:** These fields are `hasMany` relationships to the `genres` and `tags` collections. By default, the API returns an array of integer IDs. Use `?depth=1` or higher to populate the full genre/tag objects:
 
@@ -194,7 +204,7 @@ Individual comic page management.
 
 #### Endpoints
 
-- `GET /api/pages` - List pages (with filtering by comic, chapter, status)
+- `GET /api/pages` - List pages (with filtering by comic, chapter, visibility)
 - `POST /api/pages` - Create new page
 - `GET /api/pages/:id` - Get specific page
 - `PATCH /api/pages/:id` - Update page
@@ -204,7 +214,8 @@ Individual comic page management.
 
 - `?where[comic][equals]=1` - Filter by comic ID
 - `?where[chapter][equals]=2` - Filter by chapter ID
-- `?where[status][equals]=published` - Filter by status
+- `?where[visibility][equals]=public` - Filter by visibility
+- `?where[publishedDate][less_than_equal]=<now ISO>` - Restrict to already-live pages
 - `?sort=globalPageNumber` - Sort by global page order
 - `?sort=chapterPageNumber` - Sort by chapter page order
 - `?limit=20` - Limit results
@@ -233,8 +244,8 @@ Individual comic page management.
   "contentWarning": "Optional content warning (triggers blur overlay on frontend)",
   "authorNotes": "Author commentary and notes",
   "slug": "optional-page-title", // Top-level, unique within comic, auto-regenerates on chapter/title change
-  "status": "draft|scheduled|published",
-  "publishedDate": "2024-01-15T10:30:00Z",
+  "visibility": "private|public", // Never public when "private", whatever the date
+  "publishedDate": "2024-01-15T10:30:00Z", // Go-live date; future = queued, hidden
   "navigation": {
     "previousPage": 9, // Integer ID of previous page (or null)
     "nextPage": 11, // Integer ID of next page (or null)
@@ -254,6 +265,45 @@ Individual comic page management.
   "updatedAt": "2024-01-15T10:30:00Z"
 }
 ```
+
+#### Visibility and go-live date
+
+`visibility` and `publishedDate` are **independent axes**. They replaced the old
+single `status` enum (`draft|scheduled|published`) in July 2026. A draft is never
+public regardless of its timestamp; a public page is hidden while its timestamp
+is in the future.
+
+| `visibility` | `publishedDate` | Derived state | Publicly visible? |
+| ------------ | --------------- | ------------- | ----------------- |
+| `private`    | any / null      | **Draft**     | No                |
+| `public`     | past or null    | **Live**      | Yes               |
+| `public`     | future          | **Queued**    | No                |
+
+"Draft", "Queued" and "Live" are **derived, never stored**. There is deliberately
+no third `visibility` value — do not add one.
+
+Rules the API enforces:
+
+- **Date stamping is fill-only.** A page becoming `public` with no
+  `publishedDate` is stamped to `now`. An existing date is never overwritten,
+  whether past (backdated archive page) or future (queued page).
+- **A non-draft never has a blank date.**
+- **Drafts are never stamped** and are not required to have a date, though they
+  may carry one, which survives the draft → public transition.
+- **Publishing requires a title, a page image, and a chapter.** Enforced in a
+  `beforeValidate` hook; a violation returns `400` with a message naming the
+  missing fields. Drafts are exempt and may be arbitrarily incomplete.
+
+To select only live pages, both halves of the predicate are required:
+
+```
+?where[visibility][equals]=public&where[publishedDate][less_than_equal]=<now ISO>
+```
+
+Note that a queued page's date passing does **not** by itself make it appear on
+the public site: the public read surface is a set of static R2 manifests that
+must be regenerated. The cron trigger that will do this automatically is not yet
+implemented. See [`visibility-model.md`](./visibility-model.md).
 
 ### Chapters (`/chapters`)
 
@@ -459,7 +509,8 @@ Authorization: Bearer jwt_token
   "description": "A brief summary of the comic series",
   "author": 2,
   "coverImage": 5,
-  "status": "published",
+  "visibility": "public",
+  "lifecycle": "ongoing",
   // ... all other comic fields ...
 
   "chapters": [
@@ -479,7 +530,8 @@ Authorization: Bearer jwt_token
           "title": null,
           "pageImage": 20,
           "altText": "Chapter 1 cover showing...",
-          "status": "published",
+          "visibility": "public",
+          "publishedDate": "2024-01-15T10:30:00Z",
           // ... all other page fields ...
         },
         {
@@ -489,7 +541,8 @@ Authorization: Bearer jwt_token
           "title": "The Hero Awakens",
           "pageImage": 21,
           "altText": "Our hero wakes up in a mysterious forest...",
-          "status": "published",
+          "visibility": "public",
+          "publishedDate": "2024-01-16T10:30:00Z",
           // ... all other page fields ...
         }
         // ... more pages
@@ -555,25 +608,36 @@ GET /api/metadata
     { "label": "Webcomic", "value": 2 },
     // ... dynamic from tags collection (integer IDs)
   ],
-  "comicStatuses": [
-    { "label": "Draft/Hidden", "value": "draft" },
-    { "label": "Live", "value": "live" },
+  "comicVisibilities": [
+    { "label": "Private", "value": "private" },
+    { "label": "Public", "value": "public" }
+  ],
+  "comicLifecycles": [
+    { "label": "Ongoing", "value": "ongoing" },
     { "label": "On Hiatus", "value": "hiatus" },
     { "label": "Completed", "value": "completed" }
   ],
-  "pageStatuses": [
-    { "label": "Draft", "value": "draft" },
-    { "label": "Scheduled", "value": "scheduled" },
-    { "label": "Published", "value": "published" }
+  "pageVisibilities": [
+    { "label": "Draft", "value": "private" },
+    { "label": "Published", "value": "public" }
   ]
 }
 ```
 
 **Features:**
 - No authentication required (public configuration data)
-- Returns all available options for credit roles, link types, publishing schedules, genres, tags, and statuses
+- Returns all available options for credit roles, link types, publishing schedules, genres, tags, visibilities, and lifecycles
 - **Genres and Tags are dynamic** - fetched from their respective collections (can be managed via admin)
-- Credit roles, link types, schedules, and statuses remain static configuration values
+- Credit roles, link types, schedules, visibilities and lifecycles remain static configuration values
+- These option arrays are read directly off the collection field definitions, so they cannot drift from the schema
+
+**Note:** `comicStatuses` and `pageStatuses` were removed in July 2026 when the
+single `status` field was split into independent visibility and time/lifecycle
+axes. Page visibility values are `private`/`public` but are **labelled**
+"Draft"/"Published" because that is what authors call them. There is deliberately
+no "Scheduled" option — a queued page is `public` with a future `publishedDate`,
+which is derived at read time, not stored. See
+[`visibility-model.md`](./visibility-model.md).
 - Used to populate dropdown menus and multi-select components
 
 ### Chapter Management
@@ -706,7 +770,7 @@ file_1: [File object for second page]
 - **Optimized for Workers**: Uses deferred hook processing to minimize subrequests
 - **Individual Error Handling**: Failed uploads don't stop the batch
 - **Automatic Chapter Creation**: Creates "Uploaded Pages" chapter for orphaned images
-- **Draft Status**: All pages created as drafts for review
+- **Draft Visibility**: All pages created with `visibility: "private"` and no `publishedDate`, for review
 - **Automatic Numbering**: Chapter and global page numbers assigned automatically (recalculated at end of batch)
 - **Size Limits**: 10MB per file, 50 files max per batch
 
@@ -865,8 +929,13 @@ remains as a JOIN-avoiding access-control optimization.
 ### Filtering and Sorting
 
 ```javascript
-// Get all published pages for a specific comic, sorted by global page number
-GET /api/pages?where[comic][equals]=1&where[status][equals]=published&sort=globalPageNumber
+// Get all LIVE pages for a specific comic, sorted by global page number.
+// Both halves of the predicate are required: `visibility` alone would also
+// return queued pages, which are published but not yet released.
+GET /api/pages?where[comic][equals]=1&where[visibility][equals]=public&where[publishedDate][less_than_equal]=2026-07-25T00:00:00.000Z&sort=globalPageNumber
+
+// Get every published page including queued ones (editorial views only)
+GET /api/pages?where[comic][equals]=1&where[visibility][equals]=public&sort=globalPageNumber
 
 // Get all comics by current user (creator role)
 GET /api/comics?where[author][equals]=2
@@ -1131,6 +1200,43 @@ Chimera CMS uses a dual numbering system for comic pages:
 **Impact**: Frontend should generate thumbnails using Canvas API for optimal bulk upload performance (50 files). Without client thumbnails, batch size is limited to ~20 files.
 
 ## Migration Notes
+
+### July 25, 2026 Update (Visibility / Timestamp Split)
+
+**BREAKING CHANGE**: the `status` field was removed from both Pages and Comics
+and replaced by independent axes. See [`visibility-model.md`](./visibility-model.md)
+for the full model.
+
+- **Pages**: `status` (`draft|scheduled|published`) → `visibility`
+  (`private|public`), paired with the existing `publishedDate`. A draft is never
+  public regardless of its timestamp; a public page with a future timestamp is
+  "queued" and stays hidden until the date passes.
+- **Comics**: `status` (`draft|live|hiatus|completed`) → `visibility`
+  (`private|public`) + `lifecycle` (`ongoing|hiatus|completed`).
+- **`scheduled` is gone and must not come back.** "Queued" is derived from the
+  two fields at read time. The old value was vestigial anyway — declared and
+  validated against, but never written by any code path; zero rows carried it.
+- **`/api/metadata`**: `comicStatuses` and `pageStatuses` replaced by
+  `comicVisibilities`, `comicLifecycles`, and `pageVisibilities`.
+- **New server-side gate**: publishing a page now requires a title, a page image,
+  and a chapter, enforced in a `beforeValidate` hook (`400` on violation). This
+  rule previously lived only in the frontend, so the API would accept an
+  unpublishable public page.
+- **Date stamping is fill-only**: a page going public without a date is stamped
+  to `now`; an existing date is never overwritten, in either direction. This is
+  what makes scheduling possible.
+- **Stats fix**: `comic.stats.totalPages` / `lastPagePublished` previously counted
+  queued pages, leaking an unreleased page's existence. They now use the live
+  predicate.
+- **Frontend migration required**: `page.status` → `page.visibility`,
+  `comic.status` → `comic.visibility` + `comic.lifecycle`. Derived state comes
+  from the shared `derivePageState()` helper in `src/js/utils.js` — do not
+  re-derive it inline.
+- **Database migration**: `src/migrations/20260725_visibility_lifecycle_split.ts`,
+  reversible. Verified round-trip on a scratch copy of the dev DB before applying.
+- **Not yet implemented**: the Cloudflare Cron Trigger that will regenerate
+  manifests when a queued page's date passes. Until it exists, a queued page
+  going live has no public effect until `/api/generate-manifests` is triggered.
 
 ### January 19, 2026 Update (Comic Links)
 - **New field**: Added `links` array field to Comics collection

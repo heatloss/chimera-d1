@@ -232,8 +232,9 @@ GET /api/metadata
   "creditRoles": [...],
   "publishSchedules": [...],
   "genres": [...],
-  "comicStatuses": [...],
-  "pageStatuses": [...]
+  "comicVisibilities": [...],
+  "comicLifecycles": [...],
+  "pageVisibilities": [...]
 }
 ```
 

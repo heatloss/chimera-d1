@@ -130,11 +130,14 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString()
     const results: { comics: string[]; errors: string[] } = { comics: [], errors: [] }
 
-    // Fetch comics that should be published (live, hiatus, or completed)
+    // Fetch public comics. Lifecycle (ongoing/hiatus/completed) is deliberately
+    // NOT consulted — a paused or finished comic is still a readable archive.
+    // Note: a public comic with zero live pages still produces no manifest;
+    // generateComicManifest() returns null for it.
     const comicsQuery = await payload.find({
       collection: 'comics',
       where: {
-        status: { in: ['live', 'hiatus', 'completed'] },
+        visibility: { equals: 'public' },
         ...(singleComicId ? { id: { equals: parseInt(singleComicId, 10) } } : {}),
       },
       limit: 1000,
@@ -169,7 +172,7 @@ export async function POST(request: NextRequest) {
       const allComics = singleComicId
         ? (await payload.find({
             collection: 'comics',
-            where: { status: { in: ['live', 'hiatus', 'completed'] } },
+            where: { visibility: { equals: 'public' } },
             limit: 1000,
             depth: 2,
           })).docs
@@ -211,19 +214,19 @@ async function generateComicsIndex(
   const entries: ComicIndexEntry[] = []
 
   for (const comic of comics) {
-    // Get published page count and latest date
+    // Count LIVE pages only — public AND due. Queued pages must not appear.
     const pagesQuery = await payload.find({
       collection: 'pages',
       where: {
         comic: { equals: comic.id },
-        status: { equals: 'published' },
+        visibility: { equals: 'public' },
         publishedDate: { less_than_equal: new Date().toISOString() },
       },
       limit: 1,
       sort: '-publishedDate',
     })
 
-    // Skip comics with no published pages
+    // Skip comics with no live pages
     if (pagesQuery.totalDocs === 0) continue
 
     const coverImage = typeof comic.coverImage === 'object' ? comic.coverImage : null
@@ -303,12 +306,15 @@ async function generateComicManifest(
 ): Promise<ComicManifest | null> {
   const now = new Date().toISOString()
 
-  // Fetch published pages
+  // Fetch LIVE pages only — public AND due.
+  // This is the single predicate that keeps queued pages off the public site:
+  // a page that is public with a future date is excluded here, and the manifest
+  // is what readers actually consume.
   const pagesQuery = await payload.find({
     collection: 'pages',
     where: {
       comic: { equals: comic.id },
-      status: { equals: 'published' },
+      visibility: { equals: 'public' },
       publishedDate: { less_than_equal: now },
     },
     limit: 10000,
@@ -316,7 +322,7 @@ async function generateComicManifest(
     depth: 1, // Populate pageImage, thumbnailImage
   })
 
-  // Skip if no published pages
+  // Skip if no live pages
   if (pagesQuery.docs.length === 0) {
     return null
   }

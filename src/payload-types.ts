@@ -234,7 +234,14 @@ export interface Comic {
         id?: string | null;
       }[]
     | null;
-  status: 'draft' | 'live' | 'hiatus' | 'completed';
+  /**
+   * Private comics are never published, regardless of their pages.
+   */
+  visibility: 'private' | 'public';
+  /**
+   * Editorial state. Has no effect on whether the comic is public.
+   */
+  lifecycle: 'ongoing' | 'hiatus' | 'completed';
   publishSchedule: 'daily' | 'weekly' | 'twice-weekly' | 'monthly' | 'irregular' | 'completed' | 'inactive';
   /**
    * Select all genres that apply to your comic
@@ -489,9 +496,12 @@ export interface Page {
    * Optional commentary, behind-the-scenes notes, or author thoughts (Markdown supported)
    */
   authorNotes?: string | null;
-  status: 'draft' | 'scheduled' | 'published';
   /**
-   * When this page should go live (for scheduling)
+   * Draft is never public. Published goes live once the Go-Live Date passes.
+   */
+  visibility: 'private' | 'public';
+  /**
+   * When this page goes live. Leave blank to go live immediately on publish. A future date queues the page — it stays hidden until the date passes.
    */
   publishedDate?: string | null;
   navigation?: {
@@ -677,7 +687,8 @@ export interface ComicsSelect<T extends boolean = true> {
         url?: T;
         id?: T;
       };
-  status?: T;
+  visibility?: T;
+  lifecycle?: T;
   publishSchedule?: T;
   genres?: T;
   tags?: T;
@@ -750,7 +761,7 @@ export interface PagesSelect<T extends boolean = true> {
   altText?: T;
   contentWarning?: T;
   authorNotes?: T;
-  status?: T;
+  visibility?: T;
   publishedDate?: T;
   navigation?:
     | T

@@ -8,7 +8,8 @@ multi-tenant story is where the gaps are. This repo.
 ### Collections (`src/collections/`)
 - **Comics** — title, `slug` (globally unique — see gap), description, `author`
   (→users, auto-set to `req.user` on create), coverImage, `credits[]`,
-  `links[]`, status (draft/live/hiatus/completed), publishSchedule,
+  `links[]`, `visibility` (private/public) + `lifecycle`
+  (ongoing/hiatus/completed) — independent axes, publishSchedule,
   genres/tags (hasMany), `isNSFW`, `seoMeta`, `stats`. `afterChange` runs
   `deduplicateRelationships` (raw D1 SQL) to work around the adapter's hasMany
   duplication bug. Access: create=creator/editor/admin; read/update scoped to
@@ -21,7 +22,10 @@ multi-tenant story is where the gaps are. This repo.
   `comic.author` to avoid a D1 JOIN "ambiguous column" bug), chapter,
   chapterPageNumber, `globalPageNumber` (auto across comic), pageImage,
   pageExtraImages[], thumbnailImage, altText, contentWarning, authorNotes,
-  status, publishedDate, navigation group, seoMeta, stats. Uses raw D1
+  `visibility` (private/public) + `publishedDate` (independent axes; future date
+  = queued, hidden — see `docs/visibility-model.md`), navigation group, seoMeta,
+  stats. `beforeValidate` blocks publishing a page missing title/image/chapter.
+  Uses raw D1
   `updateComicPageStatistics()` to bypass Payload UPSERT (D1 UNIQUE-constraint
   workaround).
 - **Media** — upload, `disableLocalStorage` (R2 only), image/*, `imageSizes`

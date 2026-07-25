@@ -143,7 +143,7 @@ export const Comics: CollectionConfig = {
   slug: 'comics',
   admin: {
     useAsTitle: 'title',
-    defaultColumns: ['title', 'author', 'status', 'publishSchedule', 'updatedAt'],
+    defaultColumns: ['title', 'author', 'visibility', 'lifecycle', 'publishSchedule', 'updatedAt'],
     group: 'Comics', // Main group for comic management
   },
   access: {
@@ -374,21 +374,61 @@ export const Comics: CollectionConfig = {
         },
       ],
     },
+    /**
+     * VISIBILITY AND LIFECYCLE ARE INDEPENDENT AXES.
+     *
+     * These were once a single `status` field with the values
+     * draft/live/hiatus/completed, which forced every non-draft comic to be
+     * public and erased lifecycle information the moment a comic was hidden.
+     * A completed comic taken offline was inexpressible.
+     *
+     * `visibility` answers "may the public see this?" — binary, and it stays
+     * binary. A third value (e.g. 'unlisted') would be a genuinely different
+     * concept and deserves its own field, not a smuggled-in enum value.
+     *
+     * `lifecycle` answers "where is this comic in its life?" — freely
+     * extensible. New values (abandoned, archived, on-break…) cost one line
+     * and carry no visibility implication.
+     *
+     * NOTE: a comic being `public` is necessary but NOT sufficient for it to
+     * appear on the public site — generate-manifests also skips any comic with
+     * zero live pages. See docs/visibility-model.md
+     */
     {
-      name: 'status',
+      name: 'visibility',
       type: 'select',
       required: true,
-      defaultValue: 'draft',
+      defaultValue: 'private',
+      label: 'Visibility',
       options: [
-        { label: 'Draft/Hidden', value: 'draft' },
-        { label: 'Live', value: 'live' },
+        { label: 'Private', value: 'private' },
+        { label: 'Public', value: 'public' },
+      ],
+      admin: {
+        description: 'Private comics are never published, regardless of their pages.',
+        position: 'sidebar',
+      },
+    },
+    {
+      name: 'lifecycle',
+      type: 'select',
+      required: true,
+      defaultValue: 'ongoing',
+      label: 'Lifecycle',
+      options: [
+        { label: 'Ongoing', value: 'ongoing' },
         { label: 'On Hiatus', value: 'hiatus' },
         { label: 'Completed', value: 'completed' },
       ],
       admin: {
+        description: 'Editorial state. Has no effect on whether the comic is public.',
         position: 'sidebar',
       },
     },
+    // TODO(follow-up): `publishSchedule` below carries 'completed' and
+    // 'inactive' values that now overlap `lifecycle`. It is a cadence field
+    // ("updates weekly") and untangling it is a separate cleanup — see
+    // docs/visibility-model.md.
     {
       name: 'publishSchedule',
       type: 'select',

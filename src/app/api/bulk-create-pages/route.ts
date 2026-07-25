@@ -279,7 +279,7 @@ export async function POST(request: NextRequest) {
             pageImage: mediaDoc.id,
             altText: pageData.altText || '',
             authorNotes: pageData.authorNotes || '',
-            status: 'draft',
+            visibility: 'private',
             // Don't set chapterPageNumber - let the hook auto-assign it
           } as any,
           user, // Pass user context for access control and hooks
@@ -538,12 +538,14 @@ async function updateComicStatistics(
     limit: 1,
   });
 
-  // Count published pages and find last published date
+  // Find the last LIVE page date — public AND due, so queued pages don't
+  // advance the comic's "last updated" before they actually release.
   const publishedPages = await payload.find({
     collection: 'pages',
     where: {
       comic: { equals: comicId },
-      status: { equals: 'published' },
+      visibility: { equals: 'public' },
+      publishedDate: { less_than_equal: new Date().toISOString() },
     },
     sort: '-publishedDate',
     limit: 1,

@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { APIError } from 'payload'
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 import { findOrCreateUnassignedChapter } from './Chapters'
 
@@ -14,7 +15,7 @@ export const Pages: CollectionConfig = {
   slug: 'pages',
   admin: {
     useAsTitle: 'displayTitle',
-    defaultColumns: ['displayTitle', 'comic', 'chapter', 'chapterPageNumber', 'globalPageNumber', 'status', 'publishedDate'],
+    defaultColumns: ['displayTitle', 'comic', 'chapter', 'chapterPageNumber', 'globalPageNumber', 'visibility', 'publishedDate'],
     group: 'Comics', // Same group as Comics for unified workflow
     listSearchableFields: ['title', 'authorNotes', 'altText'],
     pagination: {
@@ -475,36 +476,48 @@ export const Pages: CollectionConfig = {
         rows: 4,
       },
     },
+    /**
+     * VISIBILITY AND TIMESTAMP ARE INDEPENDENT AXES.
+     *
+     * `visibility` answers "may the public see this?" — nothing else.
+     * `publishedDate` answers "when does it go live?" — nothing else.
+     *
+     * The reader-facing state is DERIVED from both, never stored:
+     *
+     *   private + any date            → Draft   (not public)
+     *   public  + date in the past    → Live    (public)
+     *   public  + date in the future  → Queued  (not public, yet)
+     *
+     * Do not re-introduce a third `visibility` value such as 'scheduled'.
+     * "Queued" is not a stored state; it is `public` with a future date.
+     * See docs/visibility-model.md
+     */
     {
-      name: 'status',
+      name: 'visibility',
       type: 'select',
       required: true,
-      defaultValue: 'draft',
+      defaultValue: 'private',
+      label: 'Visibility',
       options: [
-        { label: 'Draft', value: 'draft' },
-        { label: 'Scheduled', value: 'scheduled' },
-        { label: 'Published', value: 'published' },
+        { label: 'Draft', value: 'private' },
+        { label: 'Published', value: 'public' },
       ],
       admin: {
+        description: 'Draft is never public. Published goes live once the Go-Live Date passes.',
         position: 'sidebar',
       },
     },
     {
       name: 'publishedDate',
       type: 'date',
-      label: 'Publish Date',
+      label: 'Go-Live Date',
       admin: {
-        description: 'When this page should go live (for scheduling)',
+        description:
+          'When this page goes live. Leave blank to go live immediately on publish. A future date queues the page — it stays hidden until the date passes.',
         position: 'sidebar',
         date: {
           pickerAppearance: 'dayAndTime',
         },
-      },
-      validate: (val, { siblingData }) => {
-        if ((siblingData as any).status === 'scheduled' && !val) {
-          return 'Published date is required for scheduled pages'
-        }
-        return true
       },
     },
     // Navigation helpers (computed fields)
@@ -621,6 +634,64 @@ export const Pages: CollectionConfig = {
     },
   ],
   hooks: {
+    beforeValidate: [
+      /**
+       * Enforce publish requirements SERVER-SIDE.
+       *
+       * The frontend page editor has always gated these three fields at the
+       * publish boundary (validatePage() in pageEditorOps.js), but nothing
+       * enforced them here — so publishing via the REST API directly could
+       * create a public page with no title, no image, and no chapter.
+       *
+       * This matters more now that pages can be queued: a scheduled page goes
+       * live with no human present, so "is this page fit to be public?" has to
+       * be answered when it is saved, not when someone happens to click.
+       *
+       * Requirements apply to visibility, NOT to the date. A queued page is
+       * held to the same standard as a live one — it is already public, just
+       * not yet due.
+       */
+      async ({ data, operation, originalDoc }) => {
+        if (!data) return data
+
+        // Only gate documents that are (or are becoming) public.
+        const visibility = data.visibility ?? originalDoc?.visibility
+        if (visibility !== 'public') return data
+
+        // Updates may send partial data — fall back to the stored document so
+        // that toggling visibility alone doesn't trip on absent fields.
+        const resolve = (field: string) =>
+          data[field] !== undefined ? data[field] : originalDoc?.[field]
+
+        const missing: string[] = []
+
+        const title = resolve('title')
+        if (typeof title !== 'string' || !title.trim()) {
+          missing.push('a page title')
+        }
+
+        if (!resolve('pageImage')) {
+          missing.push('a page image')
+        }
+
+        if (!resolve('chapter')) {
+          missing.push('a chapter assignment')
+        }
+
+        if (missing.length > 0) {
+          const list =
+            missing.length === 1
+              ? missing[0]
+              : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`
+          throw new APIError(
+            `This page cannot be published without ${list}. Save it as a draft instead.`,
+            400,
+          )
+        }
+
+        return data
+      },
+    ],
     beforeChange: [
       async ({ data, operation, req, originalDoc }) => {
         // Track original chapter for stats update when page is reassigned
@@ -657,8 +728,11 @@ export const Pages: CollectionConfig = {
           }
         }
 
-        // Auto-set publish date when status changes to published
-        if (data.status === 'published' && !data.publishedDate) {
+        // Stamp a go-live date when a page becomes public without one.
+        // FILL-ONLY, NEVER OVERWRITE: an existing date is the user's intent,
+        // whether it is in the past (backdated archive page) or the future
+        // (queued page). Clobbering it here would destroy scheduling.
+        if (data.visibility === 'public' && !data.publishedDate) {
           data.publishedDate = new Date()
         }
 
@@ -977,12 +1051,17 @@ async function updateChapterStatistics(payload: any, chapterId: string | number,
  */
 async function updateComicPageStatistics(payload: any, comicId: string, req: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
   try {
-    // Count published pages with guard clauses
+    // Count LIVE pages only — public AND past-dated.
+    // Queued pages (public with a future date) are deliberately excluded:
+    // these stats drive reader-facing counts and the "last updated" date, so
+    // counting a queued page here would leak an unreleased page's existence.
+    const now = new Date().toISOString()
     const pages = await payload.find({
       collection: 'pages',
       where: {
         comic: { equals: comicId },
-        status: { equals: 'published' },
+        visibility: { equals: 'public' },
+        publishedDate: { less_than_equal: now },
       },
       limit: 1000,
       req: {
@@ -992,7 +1071,7 @@ async function updateComicPageStatistics(payload: any, comicId: string, req: any
       } as any
     })
 
-    // Find last published page date
+    // Find the most recent go-live date among live pages
     let lastPagePublished: string | null = null
     if (pages.docs.length > 0) {
       const sortedPages = pages.docs
