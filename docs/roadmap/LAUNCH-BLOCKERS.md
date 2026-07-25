@@ -85,6 +85,24 @@ Priority tiers:
     (pages whose date passed since the last run) or can stay stateless and
     unconditionally regenerate. Stateless is simpler and idempotent; crossing
     detection needs a stored "last run" timestamp somewhere.
+- [ ] **[BUG] Page deletion corrupts page numbering and navigation.** Deleting
+  pages — especially several at once from the batch editor — leaves duplicate and
+  gapped `globalPageNumber` values and a desynchronized navigation linked list.
+  **Verified in live local data: 2 of 3 comics are corrupt right now** (comic 1
+  has two pages flagged `isFirstPage`, one page unreachable from either
+  direction, and duplicate globals 23/25 with a gap at 24; comic 3 has six
+  duplicated globals and a six-wide gap). Two defects: `afterDelete`'s
+  `fixAdjacentPagesAfterDelete` (`src/collections/Pages.ts:1229`) finds
+  neighbours by `globalPageNumber ± 1` arithmetic, so it cannot heal a
+  multi-page or concurrently-shifting gap; and deletion **never renumbers**
+  `globalPageNumber` at all. Trigger: `batchEditorOps.js:448-459` fires per-page
+  DELETEs concurrently via `Promise.allSettled`. Workaround is a manual
+  `POST /api/recalculate-comic-pages`. Full mechanism, evidence, and three fix
+  options in `docs/known-issues.md`. — backend + admin
+
+  *Deferred out of the July 2026 visibility/timestamp split on purpose; pick this
+  up next. A reader hitting a broken chain sees a dead-end mid-comic, and a
+  creator has no UI-visible way to know or repair it.*
 - [ ] **[ABSENT] No comic-creation UI.** The admin never calls `POST /comics`
   (only GET list + PATCH). A new creator has no way to start a comic. — admin
 - [ ] **[ABSENT] No signup / creator-onboarding UI.** Backend has `/register`

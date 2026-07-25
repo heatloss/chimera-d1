@@ -79,6 +79,12 @@ multi-tenant story is where the gaps are. This repo.
   leaks by filename.
 
 ### P1 — Core product
+- **[BUG] Page deletion corrupts `globalPageNumber` + navigation.**
+  `fixAdjacentPagesAfterDelete` (`Pages.ts:1229`) locates neighbours by
+  `globalPageNumber ± 1`, so multi-page/concurrent deletes leave gaps, duplicate
+  numbers and a desynchronized linked list; deletion never renumbers. Verified
+  corrupt in 2 of 3 live comics. Manual repair: `POST /api/recalculate-comic-pages`.
+  See `docs/known-issues.md`.
 - **[BUG] `Comics.slug` globally `unique`** (`Comics.ts:194`) — contradicts
   CLAUDE.md; blocks two creators sharing a slug. (Chapters/Pages scope correctly.)
 - **[ABSENT] No email adapter** → password reset/verification impossible

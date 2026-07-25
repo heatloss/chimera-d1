@@ -471,6 +471,117 @@ The denormalized `author` field remains as an optimization.
 
 ---
 
+## Page Deletion Corrupts globalPageNumber and Navigation Links
+
+**Status:** OPEN, confirmed against live local data (July 25, 2026). Not yet
+fixed — deliberately deferred out of the visibility/timestamp split. Tracked as
+P1 in `docs/roadmap/LAUNCH-BLOCKERS.md`.
+
+**Issue:** Deleting a page — especially several pages at once — leaves the comic
+with duplicate/gapped `globalPageNumber` values and a broken `navigation`
+doubly-linked list. Pages become unreachable by forward/backward navigation, and
+more than one page can claim `isFirstPage`.
+
+### Why navigation is fragile
+
+Navigation is a **doubly-linked list denormalized into page rows**:
+`navigation_previous_page_id` and `navigation_next_page_id`. The adjacency
+"page 74 is followed by page 75" is stored twice — once as `74.nextPage = 75`,
+once as `75.previousPage = 74`. Nothing enforces that the two copies agree, so
+every create/delete must write *both* ends or the list desynchronizes. This is
+also why creating or deleting one page mutates its neighbours' rows — expected,
+not a bug in itself.
+
+The FK is `ON DELETE set null`, so a hard-deleted page leaves dangling ends
+nulled but the *rest* of the chain unrepaired.
+
+### Defect 1 — `fixAdjacentPagesAfterDelete` reasons about stale numbering
+
+`fixAdjacentPagesAfterDelete()` (`src/collections/Pages.ts:1229`, called from the
+`afterDelete` hook at `:921`) locates neighbours **by arithmetic on
+`globalPageNumber`**:
+
+```typescript
+where: { comic: { equals: comicId }, globalPageNumber: { equals: deletedGlobalPageNumber - 1 } }
+where: { comic: { equals: comicId }, globalPageNumber: { equals: deletedGlobalPageNumber + 1 } }
+```
+
+It heals exactly one single-page gap. It cannot heal:
+- **Multiple adjacent deletions** — deleting globals 10 and 11 means the second
+  delete looks for global 10 (already gone) and global 12; the surviving pages
+  9 and 12 never get linked to each other.
+- **Concurrent deletions** — the `find` for a neighbour can race another
+  delete's `update` of the same row, so the last write wins and clobbers a
+  correct link.
+- **A neighbour that was itself already relinked** — it reads
+  `prevPage.navigation?.previousPage` as authoritative, which may already be
+  stale mid-cascade.
+
+### Defect 2 — deletion never renumbers `globalPageNumber`
+
+`afterDelete` updates comic stats, chapter stats, and adjacent navigation, but
+**never recomputes `globalPageNumber` for the pages after the hole**. Numbering
+is only assigned in `beforeChange` (`Pages.ts:775-818`) as
+`totalPreviousPages + chapterPageNumber`, so after a delete the surviving pages
+keep their old numbers and a gap opens. The *next* page created in an earlier
+chapter then computes a number that collides with an existing page, producing
+duplicates. Since defect 1 navigates by number arithmetic, corrupt numbering
+directly causes corrupt links.
+
+### Observed corruption (live local DB, all three comics)
+
+```
+comic 1: 36 pages — duplicate globalPageNumber {23:2, 25:2}, gap at 24,
+         TWO pages flagged isFirstPage (ids 3 and 7),
+         3 asymmetric links (1.next=7 but 7.prev=null; 10.next=13 but 13.prev=7),
+         forward chain from the first page reaches only 35 of 36 pages
+         (page id 10 is unreachable in both directions)
+comic 3: 21 pages — duplicate globalPageNumber {14..19 each ×2}, gaps at 7-12
+         (links happen to be symmetric, numbering is not)
+comic 4: 78 pages — clean (was repaired via recalculate-comic-pages)
+```
+
+Two comics out of three are in a corrupt state *right now*. This is a real data
+bug, not a hypothetical.
+
+### Trigger in the UI (verified)
+
+`chimera-app/src/js/batchEditorOps.js` `saveChanges()` pushes one
+`authenticatedFetch('/pages/<id>', { method: 'DELETE' })` per marked page into
+`updatePromises` and then `await Promise.allSettled(updatePromises)` — i.e. the
+batch editor's "delete checked pages" fires **all deletes concurrently**
+(`batchEditorOps.js:448-459`). That hits both defects at once: multiple adjacent
+deletes *and* interleaved neighbour reads/writes. Deleting two or more adjacent
+pages from the batch editor is enough to reproduce.
+
+### Current remedy (manual, wholesale)
+
+`POST /api/recalculate-comic-pages` with `{ "comicId": N }` (admin/editor only)
+repairs a comic completely, in dependency order: it renumbers every
+`globalPageNumber` from chapter order + `chapterPageNumber`
+(`route.ts:112-170`), rebuilds chapter stats, then rebuilds navigation
+positionally from the sorted page array (`route.ts:262-321`), writing only rows
+that differ. Run this after any bulk delete.
+
+### Fix direction (not yet implemented)
+
+Options, roughly in increasing order of correctness:
+1. **Cheapest:** have `afterDelete` (and `bulk-create-pages` / reorder paths)
+   call the same wholesale recalculation the endpoint uses, instead of the
+   arithmetic-neighbour patch. Correct but O(pages) per delete.
+2. **Serialize bulk deletes:** change `batchEditorOps.js` to `await` deletes
+   sequentially, or add a real bulk-delete endpoint that deletes N pages and
+   recalculates once. Removes the concurrency half of the problem and is much
+   cheaper than (1) per page.
+3. **Structural:** stop storing navigation at all — derive prev/next at read
+   time from `globalPageNumber` ordering (manifest generation already does
+   positional work). Removes the denormalized-list class of bug entirely, but is
+   a schema + manifest + reader change.
+
+(2) + a post-batch recalculation call is probably the right first move.
+
+---
+
 ## Future Enhancements
 
 ### Slug Validation Endpoint (UX Improvement)
@@ -510,5 +621,6 @@ Response:
 
 ---
 
-**Last Updated:** 2026-01-14
-**Status:** Production-ready with documented limitations
+**Last Updated:** 2026-07-25
+**Status:** Production-ready with documented limitations, except the open page-deletion
+data bug above
