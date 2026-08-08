@@ -1243,6 +1243,11 @@ for the full model.
   - Response gains an optional `unpublished: string[]` listing retracted slugs.
   - `?comic=<id>` on a comic that is now private returns `200` and retracts it,
     where it previously returned `404`. A nonexistent id still `404`s.
+  - **`?comic=` is validated as a numeric database id** — a non-numeric value
+    (including a slug, or an empty `?comic=`) is now a `400` naming the mistake.
+    It previously fell through `parseInt` to `NaN`, matched nothing, and returned
+    a `404` reading "comic not found" — indistinguishable from a genuinely
+    missing comic. This endpoint has never accepted a slug.
   - Only a **full run** catches a deleted comic or a slug-change orphan;
     single-comic mode knows one slug and must not touch others.
   - A comic whose manifest generation *errors* is never retracted — a transient

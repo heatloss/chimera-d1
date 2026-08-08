@@ -8,7 +8,9 @@
  *   - Deletes manifests in R2 that should no longer be published
  *
  * POST /api/generate-manifests?comic=4
- *   - Regenerates manifest for a single comic by ID
+ *   - Regenerates (or retracts) the manifest for a single comic
+ *   - `comic` is the NUMERIC DATABASE ID, not a slug. A non-numeric value is a
+ *     400, not a silent no-match — see the validation below.
  *
  * Requires admin or editor role.
  *
@@ -131,9 +133,33 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check for single-comic mode (by ID)
+    // Single-comic mode. `?comic=` is a NUMERIC DATABASE ID, never a slug —
+    // reject anything else rather than coercing.
+    //
+    // This is deliberately strict because the failure was silent: parseInt on a
+    // slug yields NaN, `{ id: { equals: NaN } }` matches nothing, and the caller
+    // got a 404 reading "comic not found" — indistinguishable from a genuinely
+    // missing comic, when the real problem was passing the wrong identifier
+    // type. The admin client called the parameter `comicSlug` for seven months
+    // while correctly passing an id, so that mistake was one edit away.
+    //
+    // It matters more now that an unmatched lookup feeds a retraction decision:
+    // wrong-type input should stop here, not proceed toward delete logic.
     const { searchParams } = new URL(request.url)
-    const singleComicId = searchParams.get('comic')
+    const singleComicParam = searchParams.get('comic')
+
+    if (singleComicParam !== null && !/^\d+$/.test(singleComicParam)) {
+      return NextResponse.json(
+        {
+          error:
+            `Invalid 'comic' parameter: expected a numeric comic id, got "${singleComicParam}". ` +
+            `This endpoint takes a database id, not a slug.`,
+        },
+        { status: 400, headers: corsHeaders }
+      )
+    }
+
+    const singleComicId = singleComicParam === null ? null : Number(singleComicParam)
 
     const now = new Date().toISOString()
     const results: {
@@ -147,18 +173,19 @@ export async function POST(request: NextRequest) {
     // Otherwise a comic that was just made private is indistinguishable from one
     // that does not exist, and the endpoint 404s instead of retracting the
     // manifest — leaving it readable at its direct URL forever.
-    const targetComic = singleComicId
-      ? (
-          await payload.find({
-            collection: 'comics',
-            where: { id: { equals: parseInt(singleComicId, 10) } },
-            limit: 1,
-            depth: 2,
-          })
-        ).docs[0]
-      : undefined
+    const targetComic =
+      singleComicId !== null
+        ? (
+            await payload.find({
+              collection: 'comics',
+              where: { id: { equals: singleComicId } },
+              limit: 1,
+              depth: 2,
+            })
+          ).docs[0]
+        : undefined
 
-    if (singleComicId && !targetComic) {
+    if (singleComicId !== null && !targetComic) {
       return NextResponse.json(
         { error: `Comic not found: ${singleComicId}` },
         { status: 404, headers: corsHeaders }
@@ -173,7 +200,7 @@ export async function POST(request: NextRequest) {
       collection: 'comics',
       where: {
         visibility: { equals: 'public' },
-        ...(singleComicId ? { id: { equals: parseInt(singleComicId, 10) } } : {}),
+        ...(singleComicId !== null ? { id: { equals: singleComicId } } : {}),
       },
       limit: 1000,
       depth: 2, // Populate relationships like coverImage, genres
@@ -208,7 +235,11 @@ export async function POST(request: NextRequest) {
     try {
       const keep = new Set([...results.comics, ...results.failed])
 
-      if (singleComicId) {
+      // Compare against null, not truthiness: singleComicId is now a number, so
+      // a `!singleComicId` test would treat id 0 as "full run" and reconcile the
+      // whole bucket. D1 autoincrement starts at 1 so that id shouldn't exist,
+      // but the failure mode is mass deletion — not worth leaving to convention.
+      if (singleComicId !== null) {
         // Single-comic mode only knows about one comic, so it must not touch
         // any other slug's key. It cannot detect an orphan from a slug change
         // either — only a full run reconciles those.
@@ -240,14 +271,17 @@ export async function POST(request: NextRequest) {
     // Always regenerate the master index to keep it in sync
     try {
       // When publishing a single comic, we still need ALL published comics for the index
-      const allComics = singleComicId
-        ? (await payload.find({
-            collection: 'comics',
-            where: { visibility: { equals: 'public' } },
-            limit: 1000,
-            depth: 2,
-          })).docs
-        : comicsQuery.docs
+      const allComics =
+        singleComicId !== null
+          ? (
+              await payload.find({
+                collection: 'comics',
+                where: { visibility: { equals: 'public' } },
+                limit: 1000,
+                depth: 2,
+              })
+            ).docs
+          : comicsQuery.docs
 
       const index = await generateComicsIndex(payload, allComics, now)
       await writeToR2(bucket, 'pub/v1/index.json', index)

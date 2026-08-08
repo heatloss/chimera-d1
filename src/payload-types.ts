@@ -235,7 +235,7 @@ export interface Comic {
       }[]
     | null;
   /**
-   * Private comics are never published, regardless of their pages.
+   * Private comics have no public URL at all — not just hidden from the catalog. Applies regardless of their pages.
    */
   visibility: 'private' | 'public';
   /**

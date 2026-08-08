@@ -159,6 +159,13 @@ first makes "just made private" indistinguishable from "does not exist," which i
 what made the endpoint 404 instead of retracting — leaving the manifest readable
 forever. A genuinely nonexistent id still 404s.
 
+`?comic=` is a **numeric database id, never a slug**, and a non-numeric value is
+now a 400 rather than a `NaN` lookup that 404s as "comic not found". The admin
+client named this parameter `comicSlug` for seven months while correctly passing
+`.id` (both introduced in the same commit, `chimera-app` 08a0664), so passing an
+actual slug was one edit away — and an unmatched lookup now feeds a retraction
+decision, so wrong-type input should stop at the door.
+
 Verified in-request against the real R2 binding: 18/18 assertions across the
 leak, orphan keys, both retraction paths, error-preservation, and single-comic
 isolation.
