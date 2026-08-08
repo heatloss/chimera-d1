@@ -5,11 +5,19 @@
  *   - Generates index.json (all published comics)
  *   - Generates {slug}/manifest.json for each comic
  *   - Writes files to R2 under pub/v1/
+ *   - Deletes manifests in R2 that should no longer be published
  *
  * POST /api/generate-manifests?comic=4
  *   - Regenerates manifest for a single comic by ID
  *
  * Requires admin or editor role.
+ *
+ * PUBLISHING IS A RECONCILIATION, NOT AN APPEND.
+ * R2 is a mirror of what should be public, so this endpoint must delete as well
+ * as write. Writing only is what caused a hidden comic's manifest to stay
+ * readable at its direct URL after it dropped out of index.json — the
+ * `pub/[...path]` route serves any key it finds, with no visibility check, so a
+ * stale key IS a live public page. See docs/visibility-model.md.
  */
 
 import { getPayload } from 'payload'
@@ -128,7 +136,34 @@ export async function POST(request: NextRequest) {
     const singleComicId = searchParams.get('comic')
 
     const now = new Date().toISOString()
-    const results: { comics: string[]; errors: string[] } = { comics: [], errors: [] }
+    const results: {
+      comics: string[]
+      unpublished: string[]
+      errors: string[]
+      failed: string[]
+    } = { comics: [], unpublished: [], errors: [], failed: [] }
+
+    // In single-comic mode, look the comic up WITHOUT the visibility filter.
+    // Otherwise a comic that was just made private is indistinguishable from one
+    // that does not exist, and the endpoint 404s instead of retracting the
+    // manifest — leaving it readable at its direct URL forever.
+    const targetComic = singleComicId
+      ? (
+          await payload.find({
+            collection: 'comics',
+            where: { id: { equals: parseInt(singleComicId, 10) } },
+            limit: 1,
+            depth: 2,
+          })
+        ).docs[0]
+      : undefined
+
+    if (singleComicId && !targetComic) {
+      return NextResponse.json(
+        { error: `Comic not found: ${singleComicId}` },
+        { status: 404, headers: corsHeaders }
+      )
+    }
 
     // Fetch public comics. Lifecycle (ongoing/hiatus/completed) is deliberately
     // NOT consulted — a paused or finished comic is still a readable archive.
@@ -144,13 +179,6 @@ export async function POST(request: NextRequest) {
       depth: 2, // Populate relationships like coverImage, genres
     })
 
-    if (singleComicId && comicsQuery.docs.length === 0) {
-      return NextResponse.json(
-        { error: `Comic not found or not published: ${singleComicId}` },
-        { status: 404, headers: corsHeaders }
-      )
-    }
-
     // Generate manifest for each comic
     for (const comic of comicsQuery.docs) {
       try {
@@ -163,7 +191,50 @@ export async function POST(request: NextRequest) {
       } catch (error: any) {
         console.error(`Error generating manifest for ${comic.slug}:`, error)
         results.errors.push(`${comic.slug}: ${error.message}`)
+        // Generation failing is not evidence the comic should be unpublished.
+        // Record it so the retraction pass below leaves its manifest in place.
+        if (comic.slug) results.failed.push(comic.slug)
       }
+    }
+
+    // -------------------------------------------------------------------------
+    // Retract manifests that should no longer be public.
+    //
+    // The keep-set is the slugs actually written above, plus any whose
+    // generation threw. Everything else under the prefix is stale: a comic
+    // turned private, a comic whose last live page went away, a deleted comic,
+    // or a manifest orphaned by a slug change.
+    // -------------------------------------------------------------------------
+    try {
+      const keep = new Set([...results.comics, ...results.failed])
+
+      if (singleComicId) {
+        // Single-comic mode only knows about one comic, so it must not touch
+        // any other slug's key. It cannot detect an orphan from a slug change
+        // either — only a full run reconciles those.
+        const slug = targetComic?.slug
+        if (slug && !keep.has(slug)) {
+          const key = `pub/v1/comics/${slug}/manifest.json`
+          // Check first purely so `unpublished` stays truthful. The common case
+          // is a public comic with zero live pages, which has no manifest to
+          // begin with — deleting is harmless but reporting it as a retraction
+          // would be a lie. The full-run branch gets this for free by only
+          // deleting keys it listed.
+          if (await bucket.head(key)) {
+            await deleteFromR2(bucket, key)
+            results.unpublished.push(slug)
+          }
+        }
+      } else {
+        for (const slug of await listPublishedSlugs(bucket)) {
+          if (keep.has(slug)) continue
+          await deleteFromR2(bucket, `pub/v1/comics/${slug}/manifest.json`)
+          results.unpublished.push(slug)
+        }
+      }
+    } catch (error: any) {
+      console.error('Error retracting stale manifests:', error)
+      results.errors.push(`retract: ${error.message}`)
     }
 
     // Always regenerate the master index to keep it in sync
@@ -190,6 +261,7 @@ export async function POST(request: NextRequest) {
         success: true,
         generated: results.comics.length,
         comics: results.comics,
+        unpublished: results.unpublished.length > 0 ? results.unpublished : undefined,
         errors: results.errors.length > 0 ? results.errors : undefined,
       },
       { headers: corsHeaders }
@@ -473,4 +545,43 @@ async function writeToR2(bucket: R2Bucket, key: string, data: object): Promise<v
     },
   })
   console.log(`📤 Wrote ${key} (${json.length} bytes)`)
+}
+
+/**
+ * Delete a published file from R2. R2 deletes are idempotent — removing a key
+ * that isn't there is not an error — so callers don't need to check first.
+ */
+async function deleteFromR2(bucket: R2Bucket, key: string): Promise<void> {
+  await bucket.delete(key)
+  console.log(`🗑️  Deleted ${key}`)
+}
+
+/**
+ * List the comic slugs that currently have a manifest published in R2.
+ *
+ * This reads what IS published, so the caller can diff it against what SHOULD
+ * be. It's the only way to catch manifests with no corresponding public comic
+ * at all — a deleted comic, or a key orphaned when a slug changed.
+ *
+ * Paginates: R2 list() caps at 1000 keys per call and signals more with
+ * `truncated`, so a single call would silently under-report past that and leave
+ * stale manifests live.
+ */
+async function listPublishedSlugs(bucket: R2Bucket): Promise<string[]> {
+  const prefix = 'pub/v1/comics/'
+  const slugs: string[] = []
+  let cursor: string | undefined
+
+  do {
+    const listing = await bucket.list({ prefix, cursor })
+    for (const object of listing.objects) {
+      // pub/v1/comics/{slug}/manifest.json → {slug}
+      const rest = object.key.slice(prefix.length)
+      const [slug, ...tail] = rest.split('/')
+      if (slug && tail.join('/') === 'manifest.json') slugs.push(slug)
+    }
+    cursor = listing.truncated ? listing.cursor : undefined
+  } while (cursor)
+
+  return slugs
 }

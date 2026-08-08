@@ -1234,6 +1234,19 @@ for the full model.
   re-derive it inline.
 - **Database migration**: `src/migrations/20260725_visibility_lifecycle_split.ts`,
   reversible. Verified round-trip on a scratch copy of the dev DB before applying.
+- **`generate-manifests` now retracts as well as writes.** Hiding a comic used to
+  drop it from `index.json` while leaving `pub/v1/comics/{slug}/manifest.json` in
+  R2 — and `/api/pub/*` serves any key it finds, with no visibility check, so the
+  comic stayed fully readable at its direct URL. The endpoint now deletes
+  manifests that should no longer be public, so `private` means unreachable
+  rather than merely unlisted.
+  - Response gains an optional `unpublished: string[]` listing retracted slugs.
+  - `?comic=<id>` on a comic that is now private returns `200` and retracts it,
+    where it previously returned `404`. A nonexistent id still `404`s.
+  - Only a **full run** catches a deleted comic or a slug-change orphan;
+    single-comic mode knows one slug and must not touch others.
+  - A comic whose manifest generation *errors* is never retracted — a transient
+    failure must not take a healthy comic offline.
 - **Not yet implemented**: the Cloudflare Cron Trigger that will regenerate
   manifests when a queued page's date passes. Until it exists, a queued page
   going live has no public effect until `/api/generate-manifests` is triggered.

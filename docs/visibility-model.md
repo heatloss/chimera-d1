@@ -113,6 +113,56 @@ Vocabulary note: both collections use `private`/`public` for the visibility
 axis. The page editor labels them "Draft"/"Published" because that is what
 authors call them; comics use the literal words. The stored values are identical.
 
+### `private` means unreachable, not merely unlisted
+
+This is the load-bearing distinction, and it is what the R2 reconciliation below
+exists to guarantee.
+
+`private` is the YouTube/Vimeo sense of the word: the comic has **no public URL
+at all**. It is deliberately NOT "unlisted" — the third value those platforms
+offer, meaning live but absent from the catalog. If unlisted is ever wanted it
+gets its own value and its own retention rule; do not let `private` drift into
+meaning it.
+
+The visibility axis stays **binary**. See the note in `src/collections/Comics.ts`.
+
+## Publishing is a reconciliation, not an append
+
+R2 is a **mirror of what should be public**, so `generate-manifests` must delete
+as well as write.
+
+This matters because `(payload)/api/pub/[...path]` serves any key it finds under
+`pub/`, with no auth and no visibility check. **A stale key in R2 is a live
+public page.** Nothing downstream will save you: the manifest is a static file,
+so there is no query to re-filter.
+
+Four ways a manifest becomes stale:
+
+| Cause | Detected by |
+| --- | --- |
+| Comic turned `private` | full run and single-comic run |
+| Comic's last live page went away | full run and single-comic run |
+| Comic deleted | full run only |
+| Slug changed, old key orphaned | full run only |
+
+The last two are invisible to single-comic mode, which knows only one slug and
+must not touch any other. Only a full run lists the prefix and diffs it, so
+**a full run is what actually guarantees the invariant.**
+
+The keep-set is the slugs successfully written on this run, **plus any whose
+generation threw**. A generation error is not evidence that a comic should be
+unpublished — retracting on failure would take a healthy comic offline because of
+a transient error.
+
+Single-comic mode looks its comic up **without** the visibility filter. Filtering
+first makes "just made private" indistinguishable from "does not exist," which is
+what made the endpoint 404 instead of retracting — leaving the manifest readable
+forever. A genuinely nonexistent id still 404s.
+
+Verified in-request against the real R2 binding: 18/18 assertions across the
+leak, orphan keys, both retraction paths, error-preservation, and single-comic
+isolation.
+
 ## Auto-publish (NOT YET IMPLEMENTED)
 
 A queued page becomes live when its date passes. Because the public read surface

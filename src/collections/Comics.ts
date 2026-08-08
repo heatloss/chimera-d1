@@ -386,6 +386,13 @@ export const Comics: CollectionConfig = {
      * binary. A third value (e.g. 'unlisted') would be a genuinely different
      * concept and deserves its own field, not a smuggled-in enum value.
      *
+     * `private` means UNREACHABLE, not merely unlisted — the YouTube/Vimeo sense
+     * of the word. There is no public URL. Enforcing that is not free: because
+     * the public read surface is static R2 files served without a visibility
+     * check, generate-manifests has to DELETE a private comic's manifest. If you
+     * add another way for a comic to stop being public, it must retract there
+     * too. See docs/visibility-model.md.
+     *
      * `lifecycle` answers "where is this comic in its life?" — freely
      * extensible. New values (abandoned, archived, on-break…) cost one line
      * and carry no visibility implication.
@@ -405,7 +412,8 @@ export const Comics: CollectionConfig = {
         { label: 'Public', value: 'public' },
       ],
       admin: {
-        description: 'Private comics are never published, regardless of their pages.',
+        description:
+          'Private comics have no public URL at all — not just hidden from the catalog. Applies regardless of their pages.',
         position: 'sidebar',
       },
     },
