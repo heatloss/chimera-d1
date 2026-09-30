@@ -35,6 +35,10 @@ it blocks that goal.
   list. Start here. Answers "what must be true before we onboard someone else."
 - **[ARCHITECTURE-DECISIONS.md](ARCHITECTURE-DECISIONS.md)** — unresolved forks
   that gate real work (which publishing model; how the SSG and SPA reconcile).
+- **[ARCHITECTURE-AUDIT-2026-09.md](ARCHITECTURE-AUDIT-2026-09.md)** — full
+  code audit of chimera-d1 with step-by-step fix instructions. Adds three P0s
+  not in LAUNCH-BLOCKERS (role self-escalation, credentials in the public repo,
+  enumerable media) and the structural fix for page-ordering corruption.
 - **surfaces/** — per-repo inventory + gaps. Detail behind the blocker list.
   - [backend.md](surfaces/backend.md) — chimera-d1
   - [admin-frontend.md](surfaces/admin-frontend.md) — chimera-app
