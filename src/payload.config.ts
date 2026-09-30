@@ -145,6 +145,12 @@ const lazyD1Binding = createLazyD1Binding(cloudflare.env.D1) as any
 export default buildConfig({
   admin: {
     user: Users.slug,
+    // Disables Payload's public GET /api/og endpoint, which renders query-string
+    // input through next/og (CVE-2026-94545 on Next 16.2.0–16.3.5). Headless CMS:
+    // we don't need OG preview images for admin links.
+    meta: {
+      defaultOGImageType: 'off',
+    },
     importMap: {
       baseDir: path.resolve(dirname),
     },
