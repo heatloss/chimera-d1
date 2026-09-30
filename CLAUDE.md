@@ -20,13 +20,13 @@ Slugs are unique per-comic, not globally.
 - `/src/app/api/` - Custom API endpoints (reorder-chapters, reorder-pages, bulk-create-pages, etc.)
 - `/src/lib/` - Utilities (thumbnail generation, R2 uploads)
 - `/src/migrations/` - Drizzle ORM migrations for D1
-- `/payload.config.ts` - Main Payload configuration
+- `/src/payload.config.ts` - Main Payload configuration
 - `/wrangler.jsonc` - Cloudflare Workers config
 
 ## D1/Cloudflare Gotchas
 
 ### Lazy D1 Binding (Critical)
-The database adapter uses a lazy binding pattern in `payload.config.ts`. This ensures fresh DB context per request in Workers. Without it, DELETE operations appear to succeed but don't actually delete. Don't simplify this pattern.
+The database adapter uses a lazy binding pattern in `src/payload.config.ts`. This ensures fresh DB context per request in Workers. Without it, DELETE operations appear to succeed but don't actually delete. Don't simplify this pattern.
 
 ### hasMany Relationship Deduplication
 D1 adapter has a bug where `hasMany` relationships accumulate duplicates on each save. Comics collection has an `afterChange` hook that deduplicates `genres`, `tags`, `credits`, and `links`. If adding new hasMany relationships or array fields, consider adding similar deduplication.
