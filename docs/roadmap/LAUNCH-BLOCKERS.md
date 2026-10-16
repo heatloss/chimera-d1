@@ -81,6 +81,10 @@ Priority tiers:
     (`src/app/api/generate-manifests/route.ts:107-114`). The generation logic
     must be extracted into a plain function callable with no headers and no
     `user` before cron can invoke it.
+  - The cron must also recalculate comic stats, not just manifests.
+    `stats.totalPages` and `stats.lastPagePublished` count live pages only but
+    are recomputed only when a page is saved, so a queued page going live leaves
+    the admin's "Live Pages" and "Last updated" stale until the next save.
   - Open design question: whether the cron needs to detect the *crossing* window
     (pages whose date passed since the last run) or can stay stateless and
     unconditionally regenerate. Stateless is simpler and idempotent; crossing
