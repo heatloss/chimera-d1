@@ -31,6 +31,13 @@ The `(payload)/api/pub/[...path]` route just does `bucket.get()` — it **stream
 the pre-generated static file**, it is NOT a live DB query. So
 `api.chimeracomics.org/api/pub/...` is a static file behind a Worker URL.
 
+That route applies **no auth and no visibility check** — it serves any key under
+`pub/`. So a key left in R2 is a live public page, and publishing has to be a
+**reconciliation**: `generate-manifests` deletes manifests that should no longer
+be public, not just writes the ones that should. Anything new that stops a comic
+from being public must retract here too. See
+[`visibility-model.md`](../visibility-model.md).
+
 **Current per-comic manifest shape (v1.1):**
 ```
 meta { id, slug, title, tagline, description, thumbnail, credits, links, genres, tags }

@@ -5,11 +5,21 @@
  *   - Generates index.json (all published comics)
  *   - Generates {slug}/manifest.json for each comic
  *   - Writes files to R2 under pub/v1/
+ *   - Deletes manifests in R2 that should no longer be published
  *
  * POST /api/generate-manifests?comic=4
- *   - Regenerates manifest for a single comic by ID
+ *   - Regenerates (or retracts) the manifest for a single comic
+ *   - `comic` is the NUMERIC DATABASE ID, not a slug. A non-numeric value is a
+ *     400, not a silent no-match — see the validation below.
  *
  * Requires admin or editor role.
+ *
+ * PUBLISHING IS A RECONCILIATION, NOT AN APPEND.
+ * R2 is a mirror of what should be public, so this endpoint must delete as well
+ * as write. Writing only is what caused a hidden comic's manifest to stay
+ * readable at its direct URL after it dropped out of index.json — the
+ * `pub/[...path]` route serves any key it finds, with no visibility check, so a
+ * stale key IS a live public page. See docs/visibility-model.md.
  */
 
 import { getPayload } from 'payload'
@@ -123,30 +133,78 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check for single-comic mode (by ID)
+    // Single-comic mode. `?comic=` is a NUMERIC DATABASE ID, never a slug —
+    // reject anything else rather than coercing.
+    //
+    // This is deliberately strict because the failure was silent: parseInt on a
+    // slug yields NaN, `{ id: { equals: NaN } }` matches nothing, and the caller
+    // got a 404 reading "comic not found" — indistinguishable from a genuinely
+    // missing comic, when the real problem was passing the wrong identifier
+    // type. The admin client called the parameter `comicSlug` for seven months
+    // while correctly passing an id, so that mistake was one edit away.
+    //
+    // It matters more now that an unmatched lookup feeds a retraction decision:
+    // wrong-type input should stop here, not proceed toward delete logic.
     const { searchParams } = new URL(request.url)
-    const singleComicId = searchParams.get('comic')
+    const singleComicParam = searchParams.get('comic')
+
+    if (singleComicParam !== null && !/^\d+$/.test(singleComicParam)) {
+      return NextResponse.json(
+        {
+          error:
+            `Invalid 'comic' parameter: expected a numeric comic id, got "${singleComicParam}". ` +
+            `This endpoint takes a database id, not a slug.`,
+        },
+        { status: 400, headers: corsHeaders }
+      )
+    }
+
+    const singleComicId = singleComicParam === null ? null : Number(singleComicParam)
 
     const now = new Date().toISOString()
-    const results: { comics: string[]; errors: string[] } = { comics: [], errors: [] }
+    const results: {
+      comics: string[]
+      unpublished: string[]
+      errors: string[]
+      failed: string[]
+    } = { comics: [], unpublished: [], errors: [], failed: [] }
 
-    // Fetch comics that should be published (live, hiatus, or completed)
+    // In single-comic mode, look the comic up WITHOUT the visibility filter.
+    // Otherwise a comic that was just made private is indistinguishable from one
+    // that does not exist, and the endpoint 404s instead of retracting the
+    // manifest — leaving it readable at its direct URL forever.
+    const targetComic =
+      singleComicId !== null
+        ? (
+            await payload.find({
+              collection: 'comics',
+              where: { id: { equals: singleComicId } },
+              limit: 1,
+              depth: 2,
+            })
+          ).docs[0]
+        : undefined
+
+    if (singleComicId !== null && !targetComic) {
+      return NextResponse.json(
+        { error: `Comic not found: ${singleComicId}` },
+        { status: 404, headers: corsHeaders }
+      )
+    }
+
+    // Fetch public comics. Lifecycle (ongoing/hiatus/completed) is deliberately
+    // NOT consulted — a paused or finished comic is still a readable archive.
+    // Note: a public comic with zero live pages still produces no manifest;
+    // generateComicManifest() returns null for it.
     const comicsQuery = await payload.find({
       collection: 'comics',
       where: {
-        status: { in: ['live', 'hiatus', 'completed'] },
-        ...(singleComicId ? { id: { equals: parseInt(singleComicId, 10) } } : {}),
+        visibility: { equals: 'public' },
+        ...(singleComicId !== null ? { id: { equals: singleComicId } } : {}),
       },
       limit: 1000,
       depth: 2, // Populate relationships like coverImage, genres
     })
-
-    if (singleComicId && comicsQuery.docs.length === 0) {
-      return NextResponse.json(
-        { error: `Comic not found or not published: ${singleComicId}` },
-        { status: 404, headers: corsHeaders }
-      )
-    }
 
     // Generate manifest for each comic
     for (const comic of comicsQuery.docs) {
@@ -160,20 +218,70 @@ export async function POST(request: NextRequest) {
       } catch (error: any) {
         console.error(`Error generating manifest for ${comic.slug}:`, error)
         results.errors.push(`${comic.slug}: ${error.message}`)
+        // Generation failing is not evidence the comic should be unpublished.
+        // Record it so the retraction pass below leaves its manifest in place.
+        if (comic.slug) results.failed.push(comic.slug)
       }
+    }
+
+    // -------------------------------------------------------------------------
+    // Retract manifests that should no longer be public.
+    //
+    // The keep-set is the slugs actually written above, plus any whose
+    // generation threw. Everything else under the prefix is stale: a comic
+    // turned private, a comic whose last live page went away, a deleted comic,
+    // or a manifest orphaned by a slug change.
+    // -------------------------------------------------------------------------
+    try {
+      const keep = new Set([...results.comics, ...results.failed])
+
+      // Compare against null, not truthiness: singleComicId is now a number, so
+      // a `!singleComicId` test would treat id 0 as "full run" and reconcile the
+      // whole bucket. D1 autoincrement starts at 1 so that id shouldn't exist,
+      // but the failure mode is mass deletion — not worth leaving to convention.
+      if (singleComicId !== null) {
+        // Single-comic mode only knows about one comic, so it must not touch
+        // any other slug's key. It cannot detect an orphan from a slug change
+        // either — only a full run reconciles those.
+        const slug = targetComic?.slug
+        if (slug && !keep.has(slug)) {
+          const key = `pub/v1/comics/${slug}/manifest.json`
+          // Check first purely so `unpublished` stays truthful. The common case
+          // is a public comic with zero live pages, which has no manifest to
+          // begin with — deleting is harmless but reporting it as a retraction
+          // would be a lie. The full-run branch gets this for free by only
+          // deleting keys it listed.
+          if (await bucket.head(key)) {
+            await deleteFromR2(bucket, key)
+            results.unpublished.push(slug)
+          }
+        }
+      } else {
+        for (const slug of await listPublishedSlugs(bucket)) {
+          if (keep.has(slug)) continue
+          await deleteFromR2(bucket, `pub/v1/comics/${slug}/manifest.json`)
+          results.unpublished.push(slug)
+        }
+      }
+    } catch (error: any) {
+      console.error('Error retracting stale manifests:', error)
+      results.errors.push(`retract: ${error.message}`)
     }
 
     // Always regenerate the master index to keep it in sync
     try {
       // When publishing a single comic, we still need ALL published comics for the index
-      const allComics = singleComicId
-        ? (await payload.find({
-            collection: 'comics',
-            where: { status: { in: ['live', 'hiatus', 'completed'] } },
-            limit: 1000,
-            depth: 2,
-          })).docs
-        : comicsQuery.docs
+      const allComics =
+        singleComicId !== null
+          ? (
+              await payload.find({
+                collection: 'comics',
+                where: { visibility: { equals: 'public' } },
+                limit: 1000,
+                depth: 2,
+              })
+            ).docs
+          : comicsQuery.docs
 
       const index = await generateComicsIndex(payload, allComics, now)
       await writeToR2(bucket, 'pub/v1/index.json', index)
@@ -187,6 +295,7 @@ export async function POST(request: NextRequest) {
         success: true,
         generated: results.comics.length,
         comics: results.comics,
+        unpublished: results.unpublished.length > 0 ? results.unpublished : undefined,
         errors: results.errors.length > 0 ? results.errors : undefined,
       },
       { headers: corsHeaders }
@@ -211,19 +320,19 @@ async function generateComicsIndex(
   const entries: ComicIndexEntry[] = []
 
   for (const comic of comics) {
-    // Get published page count and latest date
+    // Count LIVE pages only — public AND due. Queued pages must not appear.
     const pagesQuery = await payload.find({
       collection: 'pages',
       where: {
         comic: { equals: comic.id },
-        status: { equals: 'published' },
+        visibility: { equals: 'public' },
         publishedDate: { less_than_equal: new Date().toISOString() },
       },
       limit: 1,
       sort: '-publishedDate',
     })
 
-    // Skip comics with no published pages
+    // Skip comics with no live pages
     if (pagesQuery.totalDocs === 0) continue
 
     const coverImage = typeof comic.coverImage === 'object' ? comic.coverImage : null
@@ -303,12 +412,15 @@ async function generateComicManifest(
 ): Promise<ComicManifest | null> {
   const now = new Date().toISOString()
 
-  // Fetch published pages
+  // Fetch LIVE pages only — public AND due.
+  // This is the single predicate that keeps queued pages off the public site:
+  // a page that is public with a future date is excluded here, and the manifest
+  // is what readers actually consume.
   const pagesQuery = await payload.find({
     collection: 'pages',
     where: {
       comic: { equals: comic.id },
-      status: { equals: 'published' },
+      visibility: { equals: 'public' },
       publishedDate: { less_than_equal: now },
     },
     limit: 10000,
@@ -316,7 +428,7 @@ async function generateComicManifest(
     depth: 1, // Populate pageImage, thumbnailImage
   })
 
-  // Skip if no published pages
+  // Skip if no live pages
   if (pagesQuery.docs.length === 0) {
     return null
   }
@@ -467,4 +579,43 @@ async function writeToR2(bucket: R2Bucket, key: string, data: object): Promise<v
     },
   })
   console.log(`📤 Wrote ${key} (${json.length} bytes)`)
+}
+
+/**
+ * Delete a published file from R2. R2 deletes are idempotent — removing a key
+ * that isn't there is not an error — so callers don't need to check first.
+ */
+async function deleteFromR2(bucket: R2Bucket, key: string): Promise<void> {
+  await bucket.delete(key)
+  console.log(`🗑️  Deleted ${key}`)
+}
+
+/**
+ * List the comic slugs that currently have a manifest published in R2.
+ *
+ * This reads what IS published, so the caller can diff it against what SHOULD
+ * be. It's the only way to catch manifests with no corresponding public comic
+ * at all — a deleted comic, or a key orphaned when a slug changed.
+ *
+ * Paginates: R2 list() caps at 1000 keys per call and signals more with
+ * `truncated`, so a single call would silently under-report past that and leave
+ * stale manifests live.
+ */
+async function listPublishedSlugs(bucket: R2Bucket): Promise<string[]> {
+  const prefix = 'pub/v1/comics/'
+  const slugs: string[] = []
+  let cursor: string | undefined
+
+  do {
+    const listing = await bucket.list({ prefix, cursor })
+    for (const object of listing.objects) {
+      // pub/v1/comics/{slug}/manifest.json → {slug}
+      const rest = object.key.slice(prefix.length)
+      const [slug, ...tail] = rest.split('/')
+      if (slug && tail.join('/') === 'manifest.json') slugs.push(slug)
+    }
+    cursor = listing.truncated ? listing.cursor : undefined
+  } while (cursor)
+
+  return slugs
 }

@@ -71,6 +71,36 @@ internal single-tenant admin.
   ~0 `@media` rules. Desktop-only.
 - **[PARTIAL] Error handling console-oriented.** Most failures `console.error`
   and leave blank state; `notify()` toast used inconsistently.
+- **[PARTIAL] Page state reports the schedule, not what readers see.**
+  `derivePageState()` (`src/js/utils.js`) calls a public page Live as soon as
+  its `publishedDate` passes. A page only reaches readers once manifests are
+  regenerated (auto-publish cron not yet implemented — see
+  `docs/visibility-model.md`) and the public site is rebuilt/deployed. The
+  admin has no signal for either, so "Live" really means "due", and a publish
+  that never ran or failed is invisible. Separately, state is only derived on
+  render: a page whose date passes while an editor is open reads Queued until
+  reload. A client-side clock tick fixes that staleness but still reports
+  "due", not "published" — the real fix needs a backend signal (e.g. last
+  successful manifest generation per comic, or per-page "in manifest") so the
+  UI can tell Queued / Due, awaiting publish / Live / Publish failed apart.
+  Affects the page editor status line, batch editor, and comic manager
+  (labels, `data-page-state` styling, the draft/queued/live filter).
+- **[PARTIAL] Unsaved changes are too quiet.** Saving is deliberately manual
+  (artists can too easily make destructive changes to sync every action), but
+  the UI borrows the visual language of auto-saving apps. Staged actions fire
+  the same `notify()` toast as "Changes saved", so staging reads as done; the
+  batch editor's staging toasts were reworded to future tense ("…will be
+  published when you save") as a stopgap. The lasting dirty signals are weak:
+  the Save button only goes from disabled to enabled, and the batch editor's
+  per-page modified badge isn't visually tied to it. Nothing guards leaving —
+  no `beforeunload` anywhere, and in-app nav links are unguarded (the batch
+  editor only disables its chapter switcher and hides its Back link). Proposed,
+  across every editor with a Save button: a stateful Save control that names
+  what's pending ("Save 3 changes") in the modified badge's styling; a leave
+  guard (`beforeunload` + in-app links); toasts reserved for outcomes (saved,
+  failed, skipped) with staging either untoasted or in a distinct `pending`
+  style; and, only if the Save control scrolls out of view in long lists, pin
+  it while dirty (a contextual save bar in effect, not a permanent banner).
 
 ### P3 — Growth
 - **[PARTIAL] Single-owner UI model.** Relies on one `activeComicId`; auto-selects

@@ -63,6 +63,50 @@ Priority tiers:
 
 ## P1 — Core product (no self-service platform without these)
 
+- [ ] **[ABSENT] No scheduled-publish cron.** The visibility/timestamp split
+  (July 25, 2026 — see `docs/visibility-model.md`) makes a page "queued" when it
+  is `public` with a future `publishedDate`. Nothing makes a queued page go live
+  on its own: the public read surface is static R2 manifests, so a queued page's
+  date passing has **no public effect** until `/api/generate-manifests` runs. A
+  creator can schedule a page today and it will silently never appear. — backend
+
+  Target: Cloudflare Cron Trigger every **30 minutes** regenerating manifests.
+  (30 min is the deliberate launch granularity; finer polling is a
+  scale-up-later problem.) Known prerequisites, already scouted:
+  - OpenNext exposes **no config hook** for a `scheduled` handler. Needs a
+    hand-written `worker.ts` that imports `.open-next/worker.js`, re-exports its
+    Durable Object classes, and is pointed at by wrangler's `main`. Getting the
+    DO re-exports wrong breaks the whole Worker, so this is delicate.
+  - `generate-manifests`' POST handler requires admin/editor auth
+    (`src/app/api/generate-manifests/route.ts:107-114`). The generation logic
+    must be extracted into a plain function callable with no headers and no
+    `user` before cron can invoke it.
+  - The cron must also recalculate comic stats, not just manifests.
+    `stats.totalPages` and `stats.lastPagePublished` count live pages only but
+    are recomputed only when a page is saved, so a queued page going live leaves
+    the admin's "Live Pages" and "Last updated" stale until the next save.
+  - Open design question: whether the cron needs to detect the *crossing* window
+    (pages whose date passed since the last run) or can stay stateless and
+    unconditionally regenerate. Stateless is simpler and idempotent; crossing
+    detection needs a stored "last run" timestamp somewhere.
+- [ ] **[BUG] Page deletion corrupts page numbering and navigation.** Deleting
+  pages — especially several at once from the batch editor — leaves duplicate and
+  gapped `globalPageNumber` values and a desynchronized navigation linked list.
+  **Verified in live local data: 2 of 3 comics are corrupt right now** (comic 1
+  has two pages flagged `isFirstPage`, one page unreachable from either
+  direction, and duplicate globals 23/25 with a gap at 24; comic 3 has six
+  duplicated globals and a six-wide gap). Two defects: `afterDelete`'s
+  `fixAdjacentPagesAfterDelete` (`src/collections/Pages.ts:1229`) finds
+  neighbours by `globalPageNumber ± 1` arithmetic, so it cannot heal a
+  multi-page or concurrently-shifting gap; and deletion **never renumbers**
+  `globalPageNumber` at all. Trigger: `batchEditorOps.js:448-459` fires per-page
+  DELETEs concurrently via `Promise.allSettled`. Workaround is a manual
+  `POST /api/recalculate-comic-pages`. Full mechanism, evidence, and three fix
+  options in `docs/known-issues.md`. — backend + admin
+
+  *Deferred out of the July 2026 visibility/timestamp split on purpose; pick this
+  up next. A reader hitting a broken chain sees a dead-end mid-comic, and a
+  creator has no UI-visible way to know or repair it.*
 - [ ] **[ABSENT] No comic-creation UI.** The admin never calls `POST /comics`
   (only GET list + PATCH). A new creator has no way to start a comic. — admin
 - [ ] **[ABSENT] No signup / creator-onboarding UI.** Backend has `/register`
