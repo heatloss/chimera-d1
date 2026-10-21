@@ -66,6 +66,10 @@ multi-tenant story is where the gaps are. This repo.
 ## Gaps (launch-blockers for hosting others)
 
 ### P0 — Safety / integrity (verified against code)
+- **[BUG] Framework versions have known critical advisories** (Payload 3.86:
+  SQLite SQL injection reachable via public REST `where`; Next 16.2.11). Upgrade
+  Payload ≥3.90 / Next 16.4.x / OpenNext 1.20.13 — details and test plan in
+  LAUNCH-BLOCKERS P0.
 - ~~**[BUG] `d1-diagnostic` POST/DELETE/PUT unauthenticated + destructive.**~~
   Fixed 2026-10-21: route deleted.
 - **[BUG] Cross-tenant leaks:** `pages-with-media` (find without `user`),
