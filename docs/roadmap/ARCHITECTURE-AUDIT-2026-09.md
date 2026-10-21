@@ -57,6 +57,8 @@ patch so far has added another implementation instead of removing one.
 
 ### P0-1 [NEW] Role self-escalation
 
+**Status: done 2026-10-21** — field-level access on `role` + `access.admin` on Users.
+
 **What:** `src/collections/Users.ts` `access.update` lets any user update their
 own record (`{ id: { equals: user.id } }`). The `role` field has no field-level
 `access`. Chain: `POST /api/register` → log in → `PATCH /api/users/<own-id>`
@@ -125,6 +127,8 @@ rule, so they remain tracked.
 `git log --all --diff-filter=A -- 'backups/*'` returns nothing after rewrite.
 
 ### P0-3 [KNOWN] Unauthenticated destructive endpoint
+
+**Status: done 2026-10-21** — all four deleted; `payload.config.ts` comment updated.
 
 **What:** `src/app/api/d1-diagnostic/route.ts` has no auth on any verb. `DELETE
 ?id=N` runs `DELETE FROM pages WHERE id = ?` for anonymous callers. `POST`

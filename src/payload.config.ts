@@ -38,12 +38,10 @@ const cloudflare = isCloudflareWorkers
 // but-doesn't-delete bug), so those call sites use `await getCloudflareContext(
 // { async: true })` to fetch a fresh request-scoped binding instead.
 //
-// This global is still load-bearing for two contexts that run OUTSIDE a Worker
-// request, where getCloudflareContext() has no request scope to resolve:
-//   1. Standalone tsx scripts (scripts/regenerate*-thumbnails.ts), where the
-//      binding comes from getCloudflareContextFromWrangler() below.
-//   2. The d1-diagnostic route, which deliberately compares this global against
-//      the OpenNext context to detect binding staleness.
+// This global is still load-bearing for standalone tsx scripts
+// (scripts/regenerate*-thumbnails.ts), which run OUTSIDE a Worker request,
+// where getCloudflareContext() has no request scope to resolve. There the
+// binding comes from getCloudflareContextFromWrangler() below.
 if (typeof globalThis !== 'undefined') {
   (globalThis as any).__CLOUDFLARE_CONTEXT__ = cloudflare
 }

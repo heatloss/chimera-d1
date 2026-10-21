@@ -7,6 +7,8 @@ export const Users: CollectionConfig = {
   },
   auth: true,
   access: {
+    // Readers have no use for the admin panel
+    admin: ({ req: { user } }) => ['admin', 'editor', 'creator'].includes(user?.role ?? ''),
     // Only admins can create new user accounts
     create: ({ req: { user } }) => {
       return user?.role === 'admin'
@@ -51,6 +53,13 @@ export const Users: CollectionConfig = {
         { label: 'Creator', value: 'creator' },
         { label: 'Reader', value: 'reader' },
       ],
+      // Collection-level update lets users edit their own record, so without
+      // this anyone could PATCH their own role to admin. /api/register and
+      // /api/request-creator-role use the Local API, which skips access checks.
+      access: {
+        create: ({ req: { user } }) => user?.role === 'admin',
+        update: ({ req: { user } }) => user?.role === 'admin',
+      },
       admin: {
         position: 'sidebar',
         description: 'User role for access control',
