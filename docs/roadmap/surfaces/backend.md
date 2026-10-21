@@ -45,8 +45,7 @@ multi-tenant story is where the gaps are. This repo.
 - `request-creator-role` (POST) — **self-upgrade to creator, no gating** ✗
 - `recalculate-comic-pages`, `generate-manifests` (POST) — admin/editor only ✓
 - `metadata` (GET) — public select-field options
-- `d1-diagnostic` (GET/POST/DELETE/PUT) — **POST/DELETE/PUT unauthenticated, raw destructive SQL** ✗
-- `test-delete/[pageId]` (DELETE) — diagnostic raw deletes (role-gated)
+- ~~`d1-diagnostic`, `test-delete/[pageId]`~~ — removed 2026-10-21 (were unauthenticated / raw destructive SQL)
 
 ### Serving routes (`src/app/(payload)/api/`)
 - Standard Payload REST + GraphQL + playground (fully exposed)
@@ -67,9 +66,8 @@ multi-tenant story is where the gaps are. This repo.
 ## Gaps (launch-blockers for hosting others)
 
 ### P0 — Safety / integrity (verified against code)
-- **[BUG] `d1-diagnostic` POST/DELETE/PUT unauthenticated + destructive.**
-  DELETE handler (`route.ts:238`) → `DELETE FROM pages WHERE id=?` with no auth.
-  PUT deletes `comics_rels`. Remove/lock before hosting anyone.
+- ~~**[BUG] `d1-diagnostic` POST/DELETE/PUT unauthenticated + destructive.**~~
+  Fixed 2026-10-21: route deleted.
 - **[BUG] Cross-tenant leaks:** `pages-with-media` (find without `user`),
   `bulk-create-pages` (no comicId ownership check), `Pages.delete` returns
   `true` for any creator (role-only, not owner-scoped).

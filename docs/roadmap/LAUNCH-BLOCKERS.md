@@ -18,12 +18,16 @@ Priority tiers:
 
 ## P0 — Safety, legal, data integrity (fix before anyone else touches it)
 
-- [ ] **[BUG] Unauthenticated destructive endpoint.** `POST/DELETE/PUT
-  /api/d1-diagnostic` (`src/app/api/d1-diagnostic/route.ts`) run raw
-  `DELETE FROM pages` / `DELETE FROM comics_rels` with **no auth check**
-  (verified: DELETE handler at line 238 goes straight to the D1 delete). Any
-  anonymous caller can delete pages. Also `test-delete/[pageId]`. **Remove or
-  lock these diagnostic routes before hosting anyone.** — backend
+- [x] **[BUG] Unauthenticated destructive endpoint.** `POST/DELETE/PUT
+  /api/d1-diagnostic` ran raw `DELETE FROM pages` / `DELETE FROM comics_rels`
+  with **no auth check**; any anonymous caller could delete pages. Also
+  `test-delete/[pageId]`. **Done 2026-10-21:** both routes (and the
+  `my-route` stub) deleted. — backend
+- [x] **[BUG] Role self-escalation** (ARCHITECTURE-AUDIT P0-1). Users could
+  update their own record and `role` had no field-level access, so
+  `POST /api/register` → `PATCH /api/users/<own-id> {"role":"admin"}` gave any
+  stranger full admin (reproduced locally). **Done 2026-10-21:** `role` is
+  create/update admin-only; readers are barred from the admin panel. — backend
 - [ ] **[BUG] Cross-tenant read/write leaks in custom endpoints.** — backend
   - `pages-with-media` calls `payload.find` **without `req`/`user`**, so access
     control is bypassed (`overrideAccess` defaults true) → any authenticated
