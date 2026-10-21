@@ -18,6 +18,39 @@ Priority tiers:
 
 ## P0 — Safety, legal, data integrity (fix before anyone else touches it)
 
+- [ ] **[BUG] Known-vulnerable framework versions in production.** As of
+  2026-10-21, `pnpm audit --prod` reports 133 advisories (8 critical, 61 high)
+  against Payload 3.86, Next 16.2.11 and OpenNext 1.20.2. Unlike most audit
+  noise, several apply to us directly: — backend
+  - **SQL injection in the SQLite adapter**
+    ([GHSA-v49j-62m6-pgrr](https://github.com/advisories/GHSA-v49j-62m6-pgrr),
+    critical, fixed 3.88; [GHSA-pj7x-6wpf-pgvp](https://github.com/advisories/GHSA-pj7x-6wpf-pgvp),
+    fixed 3.90). Condition: "untrusted users can query readable collections
+    using dynamic filters" — true here, since Pages and Comics are publicly
+    readable over stock REST, which accepts `where`. Likely reachable
+    anonymously.
+  - **Access-control fixes in 3.90:** field-level password-update restrictions
+    not enforced ([GHSA-fx49-4h83-wjv9](https://github.com/advisories/GHSA-fx49-4h83-wjv9)),
+    restricted user fields exposed in token-refresh / password-reset responses
+    ([GHSA-xgv3-crq2-6f69](https://github.com/advisories/GHSA-xgv3-crq2-6f69)),
+    SVG/XML upload sanitization bypasses.
+  - Checked and **not** applicable: `orderable` update bypass (no collection
+    uses `orderable`), first-register RCE (needs a site with no users),
+    duplicate-operation field bypass on Users (needs create access, admin-only).
+  - **Next** criticals are RCE in Image Optimization and `next/og`, plus SSRF
+    in Image Optimization (fixed ≥16.3.8). We don't use `next/og`; `next/image`
+    appears only in the template frontend page. Lower exposure, still upgrade.
+  - Most remaining highs are DoS in transitive deps of OpenNext/Payload
+    (minimatch, brace-expansion, fast-uri, undici) and clear with the upgrade.
+
+  **Fix:** Payload → ≥3.90 (3.91 current) with all `@payloadcms/*` in lockstep,
+  Next → 16.4.x, OpenNext → 1.20.13, wrangler as OpenNext requires. Run it like
+  the 3.86 upgrade (PR #9): own branch; dev-mode regression checks, `pnpm
+  preview` on workerd, a DELETE-commits check (lazy-D1 Proxy), `tsc`. Scan
+  release notes for the still-open D1 workarounds (#14766, #14748, context
+  staleness). If any release ships a migration, apply it to prod explicitly —
+  `deploy:database` currently migrates the *local* DB. Defer major-version dev
+  tooling jumps (TypeScript 7, ESLint 10, `@types/node` 26, graphql 17).
 - [x] **[BUG] Unauthenticated destructive endpoint.** `POST/DELETE/PUT
   /api/d1-diagnostic` ran raw `DELETE FROM pages` / `DELETE FROM comics_rels`
   with **no auth check**; any anonymous caller could delete pages. Also
