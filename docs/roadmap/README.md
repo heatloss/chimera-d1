@@ -45,6 +45,8 @@ it blocks that goal.
   - [ssg.md](surfaces/ssg.md) — chimera-ssg
   - [reader.md](surfaces/reader.md) — comicviewer
   - [comments.md](surfaces/comments.md) — chimera-comments
+  - [cc-importer.md](surfaces/cc-importer.md) — ComicControl → Chimera
+    migration (planned feature, not a repo)
 
 ## Gap tags
 
